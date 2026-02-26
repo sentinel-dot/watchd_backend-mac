@@ -1,0 +1,48 @@
+CREATE DATABASE IF NOT EXISTS watchd CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE watchd;
+
+CREATE TABLE IF NOT EXISTS users (
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name        VARCHAR(100) NOT NULL,
+  email       VARCHAR(255) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS rooms (
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  code        CHAR(6) NOT NULL UNIQUE,
+  created_by  INT UNSIGNED NOT NULL,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_rooms_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS room_members (
+  room_id     INT UNSIGNED NOT NULL,
+  user_id     INT UNSIGNED NOT NULL,
+  joined_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (room_id, user_id),
+  CONSTRAINT fk_room_members_room FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+  CONSTRAINT fk_room_members_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS swipes (
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id     INT UNSIGNED NOT NULL,
+  movie_id    INT UNSIGNED NOT NULL,
+  room_id     INT UNSIGNED NOT NULL,
+  direction   ENUM('left','right') NOT NULL,
+  swiped_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_swipe (user_id, movie_id, room_id),
+  CONSTRAINT fk_swipes_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_swipes_room FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS matches (
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  room_id     INT UNSIGNED NOT NULL,
+  movie_id    INT UNSIGNED NOT NULL,
+  matched_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_match (room_id, movie_id),
+  CONSTRAINT fk_matches_room FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+);
