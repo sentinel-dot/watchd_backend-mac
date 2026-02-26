@@ -59,6 +59,7 @@ router.get('/feed', authMiddleware, async (req: Request, res: Response): Promise
 
       for (const movie of movies) {
         if (swipedIds.has(movie.id)) continue;
+        if (!movie.overview || movie.overview.trim() === '') continue;
         results.push({ ...movie, streamingOptions: [] });
         if (results.length >= 20) break;
       }

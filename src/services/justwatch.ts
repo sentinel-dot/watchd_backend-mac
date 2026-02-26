@@ -17,6 +17,14 @@ interface CacheEntry {
 
 const cache = new Map<number, CacheEntry>();
 
+/** Einheitlicher Anzeigename: nur "Netflix" bzw. "Amazon Prime", ohne "with Ads" / "Standard with Ads". */
+function normalizeProviderDisplayName(clearName: string): string {
+  if (!clearName?.trim()) return clearName;
+  if (/^Netflix\b/i.test(clearName)) return 'Netflix';
+  if (/^Amazon\s*Prime/i.test(clearName)) return 'Amazon Prime';
+  return clearName;
+}
+
 interface SearchEdge {
   node: {
     id: string;
@@ -131,7 +139,23 @@ export async function getStreamingOffers(
     `;
 
     const result = await graphqlRequest<JustWatchOffersResult>(query, { nodeId });
-    const offers = result.data?.node?.offers ?? [];
+    const allOffers = result.data?.node?.offers ?? [];
+
+    // Nur echte Streaming-Abos (flatrate) und kostenlose Angebote – keine Kinos, kein Kauf/Leihe (JPC, Thalia, Cinestar, UCI, Filmspiegel etc.)
+    const STREAMING_MONETIZATION = new Set(['flatrate', 'free']);
+    const filtered = allOffers.filter(
+      (o) => STREAMING_MONETIZATION.has(o.monetizationType?.toLowerCase?.() ?? ''),
+    );
+
+    // Anzeigenamen vereinheitlichen: z. B. "Netflix Standard with Ads" → "Netflix", "Amazon Prime Video with Ads" → "Amazon Prime"
+    const offers = filtered.map((o) => ({
+      ...o,
+      package: {
+        ...o.package,
+        clearName: normalizeProviderDisplayName(o.package.clearName),
+      },
+    }));
+
     cache.set(movieId, { offers, expiresAt: now + CACHE_TTL_MS });
     return offers;
   } catch {

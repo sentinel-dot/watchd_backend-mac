@@ -37,11 +37,11 @@ async function tmdbGet<T>(path: string, params: Record<string, string> = {}): Pr
 export async function getPopularMovies(page: number): Promise<TmdbMovie[]> {
   const data = await tmdbGet<TmdbPageResult>('/movie/popular', {
     page: String(page),
-    language: 'en-US',
+    language: 'de',
   });
   return data.results;
 }
 
 export async function getMovieById(movieId: number): Promise<TmdbMovie> {
-  return tmdbGet<TmdbMovie>(`/movie/${movieId}`, { language: 'en-US' });
+  return tmdbGet<TmdbMovie>(`/movie/${movieId}`, { language: 'de' });
 }
