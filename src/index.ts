@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import path from 'path';
 import http from 'http';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
@@ -19,6 +20,10 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+// Statische Dateien (Streaming-Icons etc.) unter /icons/*
+const publicDir = path.join(process.cwd(), 'public');
+app.use('/icons', express.static(path.join(publicDir, 'icons')));
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

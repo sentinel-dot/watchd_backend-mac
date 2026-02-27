@@ -7,7 +7,8 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "download-icons": "ts-node src/scripts/download-provider-icons.ts"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

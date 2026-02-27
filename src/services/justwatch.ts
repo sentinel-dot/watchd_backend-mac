@@ -6,7 +6,8 @@ export interface StreamingOffer {
   presentationType: string;
   package: {
     clearName: string;
-    icon: string;
+    /** Wird nicht mehr gesendet – Frontend baut Icon-URL aus clearName + /icons/{slug}.png */
+    icon?: string;
   };
 }
 
@@ -147,11 +148,10 @@ export async function getStreamingOffers(
       (o) => STREAMING_MONETIZATION.has(o.monetizationType?.toLowerCase?.() ?? ''),
     );
 
-    // Anzeigenamen vereinheitlichen: z. B. "Netflix Standard with Ads" → "Netflix", "Amazon Prime Video with Ads" → "Amazon Prime"
+    // Anzeigenamen vereinheitlichen. Icon-URL baut das Frontend aus clearName + /icons/{slug}.png.
     const offers = filtered.map((o) => ({
       ...o,
       package: {
-        ...o.package,
         clearName: normalizeProviderDisplayName(o.package.clearName),
       },
     }));
