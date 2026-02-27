@@ -1,12 +1,30 @@
 const JUSTWATCH_GRAPHQL = 'https://apis.justwatch.com/graphql';
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+// Canonical provider display name → icon filename in public/icons
+const PROVIDER_ICONS: Record<string, string> = {
+  'Netflix': 'netflix.png',
+  'Amazon Prime': 'amazon-prime.png',
+  'Disney Plus': 'disney-plus.png',
+  'Apple TV+': 'apple-tv.png',
+  'HBO Max': 'hbo-max.jpeg',
+  'Joyn': 'joyn.jpeg',
+  'Paramount+': 'paramount-plus.jpeg',
+  'Rakuten TV': 'rakuten-tv.webp',
+  'RTL+': 'rtl-plus.png',
+  'WOW': 'wow.png',
+};
+
 export interface StreamingOffer {
   monetizationType: string;
   presentationType: string;
   package: {
     clearName: string;
-    /** Wird nicht mehr gesendet – Frontend baut Icon-URL aus clearName + /icons/{slug}.png */
+    /**
+     * Statischer Icon-Pfad, der vom Backend aus den Dateien in public/icons erzeugt wird,
+     * z.B. /icons/netflix.png. Kann im Frontend direkt als <img src> genutzt werden.
+     */
+    iconPath?: string;
     icon?: string;
   };
 }
@@ -22,7 +40,18 @@ const cache = new Map<number, CacheEntry>();
 function normalizeProviderDisplayName(clearName: string): string {
   if (!clearName?.trim()) return clearName;
   if (/^Netflix\b/i.test(clearName)) return 'Netflix';
-  if (/^Amazon\s*Prime/i.test(clearName)) return 'Amazon Prime';
+  if (/^Amazon\s*Prime\b/i.test(clearName)) return 'Amazon Prime';
+  // Alle Channels, die über Amazon laufen (z.B. "HBO Max Amazon Channel", "MGM Plus Amazon", "CineMix+ Amazon Channel"),
+  // werden als Teil von Amazon Prime betrachtet.
+  if (/\bAmazon\b/i.test(clearName) && !/^Amazon\s*Prime\b/i.test(clearName)) return 'Amazon Prime';
+  if (/^Disney\b/i.test(clearName)) return 'Disney Plus';
+  if (/^Apple\s*TV\b/i.test(clearName)) return 'Apple TV+';
+  if (/^(HBO\s*Max|Max)\b/i.test(clearName)) return 'HBO Max';
+  if (/^Joyn\b/i.test(clearName)) return 'Joyn';
+  if (/^Paramount\b/i.test(clearName)) return 'Paramount+';
+  if (/^Rakuten\s*TV\b/i.test(clearName)) return 'Rakuten TV';
+  if (/^RTL\s*\+?/i.test(clearName)) return 'RTL+';
+  if (/^WOW\b/i.test(clearName)) return 'WOW';
   return clearName;
 }
 
@@ -148,13 +177,20 @@ export async function getStreamingOffers(
       (o) => STREAMING_MONETIZATION.has(o.monetizationType?.toLowerCase?.() ?? ''),
     );
 
-    // Anzeigenamen vereinheitlichen. Icon-URL baut das Frontend aus clearName + /icons/{slug}.png.
-    const offers = filtered.map((o) => ({
-      ...o,
-      package: {
-        clearName: normalizeProviderDisplayName(o.package.clearName),
-      },
-    }));
+    // Anzeigenamen vereinheitlichen und statische Icon-Pfade aus public/icons ergänzen.
+    const offers = filtered.map((o) => {
+      const clearName = normalizeProviderDisplayName(o.package.clearName);
+      const iconFile = PROVIDER_ICONS[clearName];
+      const iconPath = iconFile ? `/icons/${iconFile}` : undefined;
+
+      return {
+        ...o,
+        package: {
+          clearName,
+          ...(iconPath ? { iconPath } : {}),
+        },
+      };
+    });
 
     cache.set(movieId, { offers, expiresAt: now + CACHE_TTL_MS });
     return offers;
