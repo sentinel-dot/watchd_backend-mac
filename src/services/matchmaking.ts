@@ -1,4 +1,5 @@
 import { pool } from '../db/connection';
+import { logger } from '../logger';
 import { getMovieById } from './tmdb';
 import { getStreamingOffers, StreamingOffer } from './justwatch';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
@@ -29,38 +30,45 @@ export async function checkAndCreateMatch(
   movieId: number,
   roomId: number,
 ): Promise<MatchResult> {
-  // Get all current members of the room
   const [members] = await pool.query<MemberRow[]>(
     'SELECT user_id FROM room_members WHERE room_id = ?',
     [roomId],
   );
 
   const memberCount = members.length;
+  logger.info({ roomId, memberCount, memberIds: members.map(m => m.user_id) }, 'Checking match - room members');
 
-  // Count how many members have swiped right on this movie in this room.
-  // This naturally handles solo rooms (1 member = 1 right swipe needed) and
-  // late joiners (User B joins after User A already liked → still triggers a match).
   const [swipes] = await pool.query<SwipeRow[]>(
     `SELECT user_id FROM swipes
      WHERE movie_id = ? AND room_id = ? AND direction = 'right'`,
     [movieId, roomId],
   );
 
+  const rightSwipeCount = swipes.length;
+  const swipedUserIds = swipes.map(s => s.user_id);
+  logger.info({ 
+    roomId, 
+    movieId, 
+    memberCount, 
+    rightSwipeCount, 
+    swipedUserIds,
+    needsMatch: rightSwipeCount >= memberCount 
+  }, 'Checking match - swipe status');
+
   if (memberCount < 2 || swipes.length < memberCount) {
     return { isMatch: false };
   }
 
-  // Prevent duplicate matches
   const [existing] = await pool.query<MatchExistsRow[]>(
     'SELECT id FROM matches WHERE room_id = ? AND movie_id = ?',
     [roomId, movieId],
   );
 
   if (existing.length > 0) {
+    logger.info({ roomId, movieId, existingMatchId: existing[0].id }, 'Match already exists');
     return { isMatch: false };
   }
 
-  // Insert the match
   const [result] = await pool.query<ResultSetHeader>(
     'INSERT INTO matches (room_id, movie_id) VALUES (?, ?)',
     [roomId, movieId],
@@ -68,7 +76,6 @@ export async function checkAndCreateMatch(
 
   const matchId = result.insertId;
 
-  // Fetch movie details and streaming info for the notification
   let movieTitle = '';
   let posterPath: string | null = null;
   let streamingOptions: StreamingOffer[] = [];
@@ -83,9 +90,11 @@ export async function checkAndCreateMatch(
       : new Date().getFullYear();
 
     streamingOptions = await getStreamingOffers(movieId, movie.title, releaseYear);
-  } catch {
-    // Non-fatal: match is created, notification may lack details
+  } catch (err) {
+    logger.warn({ err, movieId }, 'Failed to fetch movie details for match');
   }
+
+  logger.info({ matchId, roomId, movieId, movieTitle }, 'Match created');
 
   return {
     isMatch: true,
