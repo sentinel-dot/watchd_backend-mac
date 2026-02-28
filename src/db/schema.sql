@@ -67,6 +67,7 @@ CREATE TABLE `room_members` (
   `user_id` INT NOT NULL,
   `is_active` BOOLEAN DEFAULT TRUE,
   `joined_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `deleted_from_archive_at` TIMESTAMP NULL DEFAULT NULL,
   UNIQUE KEY `unique_room_user` (`room_id`, `user_id`),
   INDEX `idx_room_id` (`room_id`),
   INDEX `idx_user_id` (`user_id`),

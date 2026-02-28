@@ -145,7 +145,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     const token = signToken(user.id, user.email, user.is_guest);
     res.json({
       token,
-      user: { id: user.id, name: user.name, email: user.email, isGuest: user.is_guest },
+      user: { id: user.id, name: user.name, email: user.email, isGuest: !!user.is_guest },
     });
   } catch (err) {
     logger.error({ err }, 'Login error');
@@ -225,7 +225,7 @@ router.post(
           id: updated[0].id,
           name: updated[0].name,
           email: updated[0].email,
-          isGuest: updated[0].is_guest,
+          isGuest: !!updated[0].is_guest,
         },
       });
     } catch (err) {

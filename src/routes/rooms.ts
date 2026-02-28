@@ -26,6 +26,7 @@ interface MemberRow extends RowDataPacket {
   email: string | null;
   joined_at: Date;
   is_active: boolean;
+  deleted_from_archive_at: Date | null;
 }
 
 interface CountRow extends RowDataPacket {
@@ -216,7 +217,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
       `SELECT r.id, r.code, r.created_by, r.created_at, r.status, r.name, r.filters, r.last_activity_at
        FROM rooms r
        JOIN room_members rm ON rm.room_id = r.id
-       WHERE rm.user_id = ? AND r.status != 'dissolved'
+       WHERE rm.user_id = ? AND rm.deleted_from_archive_at IS NULL
        ORDER BY r.last_activity_at DESC`,
       [userId],
     );
@@ -340,15 +341,23 @@ router.delete('/:id/leave', authMiddleware, async (req: Request, res: Response):
     const lastMember = activeMembers[0].count === 0;
 
     if (lastMember) {
-      const [rooms] = await pool.query<RoomRow[]>('SELECT status FROM rooms WHERE id = ?', [roomId]);
-      if (rooms.length > 0 && rooms[0].status === 'waiting') {
-        await pool.query('UPDATE rooms SET status = ?, last_activity_at = NOW() WHERE id = ?', ['dissolved', roomId]);
+      const [memberCountRows] = await pool.query<CountRow[]>(
+        'SELECT COUNT(*) AS count FROM room_members WHERE room_id = ?',
+        [roomId],
+      );
+      const totalMembersEver = memberCountRows[0].count;
+      const wasNeverUsed = totalMembersEver === 1; // Nur Creator war je dabei, niemand ist beigetreten
 
-        const io = getIo();
-        io.to(`room:${roomId}`).emit(SocketEvents.ROOM_DISSOLVED, { roomId });
+      if (wasNeverUsed) {
+        // Niemand war je beigetreten → Raum löschen, nicht archivieren
+        await pool.query('DELETE FROM rooms WHERE id = ?', [roomId]);
       } else {
-        await pool.query('UPDATE rooms SET status = ?, last_activity_at = NOW() WHERE id = ?', ['waiting', roomId]);
+        // Raum war genutzt (Partner war dabei) → archivieren
+        await pool.query('UPDATE rooms SET status = ?, last_activity_at = NOW() WHERE id = ?', ['dissolved', roomId]);
       }
+
+      const io = getIo();
+      io.to(`room:${roomId}`).emit(SocketEvents.ROOM_DISSOLVED, { roomId });
     } else {
       await pool.query('UPDATE rooms SET status = ?, last_activity_at = NOW() WHERE id = ?', ['waiting', roomId]);
 
@@ -359,6 +368,64 @@ router.delete('/:id/leave', authMiddleware, async (req: Request, res: Response):
     res.json({ lastMember });
   } catch (err) {
     logger.error({ err, userId, roomId }, 'Leave room error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/rooms/:id/archive — Raum aus eigener Archivliste löschen
+// Hard-Delete aus DB nur wenn beide User gelöscht haben
+router.delete('/:id/archive', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const userId = (req as AuthRequest).user.userId;
+  const roomId = parseInt(req.params['id'], 10);
+
+  if (isNaN(roomId)) {
+    res.status(400).json({ error: 'Invalid room id' });
+    return;
+  }
+
+  try {
+    const [rooms] = await pool.query<RoomRow[]>(
+      'SELECT id, status FROM rooms WHERE id = ?',
+      [roomId],
+    );
+
+    if (rooms.length === 0) {
+      res.status(404).json({ error: 'Room not found' });
+      return;
+    }
+
+    if (rooms[0].status !== 'dissolved') {
+      res.status(400).json({ error: 'Room is not archived' });
+      return;
+    }
+
+    const [membership] = await pool.query<RowDataPacket[]>(
+      'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ? AND deleted_from_archive_at IS NULL',
+      [roomId, userId],
+    );
+    if (membership.length === 0) {
+      res.status(403).json({ error: 'Not a member or already deleted' });
+      return;
+    }
+
+    await pool.query(
+      'UPDATE room_members SET deleted_from_archive_at = NOW() WHERE room_id = ? AND user_id = ?',
+      [roomId, userId],
+    );
+
+    const [remaining] = await pool.query<CountRow[]>(
+      'SELECT COUNT(*) AS count FROM room_members WHERE room_id = ? AND deleted_from_archive_at IS NULL',
+      [roomId],
+    );
+
+    if (remaining[0].count === 0) {
+      await pool.query('DELETE FROM rooms WHERE id = ?', [roomId]);
+      logger.info({ roomId }, 'Room hard-deleted: both users deleted from archive');
+    }
+
+    res.json({ deleted: true });
+  } catch (err) {
+    logger.error({ err, userId, roomId }, 'Delete from archive error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

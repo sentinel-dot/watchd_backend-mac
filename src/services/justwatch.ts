@@ -4,15 +4,17 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 // Canonical provider display name → icon filename in public/icons
 const PROVIDER_ICONS: Record<string, string> = {
   'Netflix': 'netflix.png',
-  'Amazon Prime': 'amazon-prime.png',
+  'Prime Video': 'amazon-prime.png',
   'Disney Plus': 'disney-plus.png',
   'Apple TV+': 'apple-tv.png',
-  'HBO Max': 'hbo-max.jpeg',
-  'Joyn': 'joyn.jpeg',
-  'Paramount+': 'paramount-plus.jpeg',
-  'Rakuten TV': 'rakuten-tv.webp',
+  'HBO Max': 'hbo-max.png',
+  'Joyn': 'joyn.png',
+  'Paramount+': 'paramount-plus.png',
+  'Rakuten TV': 'rakuten-tv.png',
   'RTL+': 'rtl-plus.png',
   'WOW': 'wow.png',
+  'Magenta TV': 'magenta-tv.png',
+  'Sky Go': 'sky-go.png',
 };
 
 export interface StreamingOffer {
@@ -36,14 +38,15 @@ interface CacheEntry {
 
 const cache = new Map<number, CacheEntry>();
 
-/** Einheitlicher Anzeigename: nur "Netflix" bzw. "Amazon Prime", ohne "with Ads" / "Standard with Ads". */
+/** Einheitlicher Anzeigename: z. B. "Netflix", "Prime Video", ohne "with Ads" / "Standard with Ads". */
 function normalizeProviderDisplayName(clearName: string): string {
   if (!clearName?.trim()) return clearName;
   if (/^Netflix\b/i.test(clearName)) return 'Netflix';
-  if (/^Amazon\s*Prime\b/i.test(clearName)) return 'Amazon Prime';
-  // Alle Channels, die über Amazon laufen (z.B. "HBO Max Amazon Channel", "MGM Plus Amazon", "CineMix+ Amazon Channel"),
-  // werden als Teil von Amazon Prime betrachtet.
-  if (/\bAmazon\b/i.test(clearName) && !/^Amazon\s*Prime\b/i.test(clearName)) return 'Amazon Prime';
+  // Amazon Prime / Prime Video / Prime → einheitlich als "Prime Video" anzeigen.
+  if (/^Amazon\s*Prime\b/i.test(clearName)) return 'Prime Video';
+  if (/^Prime\s*Video\b/i.test(clearName) || /^Prime\b/i.test(clearName)) return 'Prime Video';
+  // Alle Channels, die über Amazon laufen (z.B. "HBO Max Amazon Channel"), als "Prime Video".
+  if (/\bAmazon\b/i.test(clearName)) return 'Prime Video';
   if (/^Disney\b/i.test(clearName)) return 'Disney Plus';
   if (/^Apple\s*TV\b/i.test(clearName)) return 'Apple TV+';
   if (/^(HBO\s*Max|Max)\b/i.test(clearName)) return 'HBO Max';
@@ -52,6 +55,8 @@ function normalizeProviderDisplayName(clearName: string): string {
   if (/^Rakuten\s*TV\b/i.test(clearName)) return 'Rakuten TV';
   if (/^RTL\s*\+?/i.test(clearName)) return 'RTL+';
   if (/^WOW\b/i.test(clearName)) return 'WOW';
+  if (/^Magenta\s*TV\b/i.test(clearName)) return 'Magenta TV';
+  if (/^Sky\s*Go\b/i.test(clearName)) return 'Sky Go';
   return clearName;
 }
 
