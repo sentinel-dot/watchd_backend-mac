@@ -9,6 +9,7 @@ import { config } from './config';
 import { initSocket } from './socket';
 import { logger } from './logger';
 import { pool } from './db/connection';
+import { applyDevSchemaIfEnabled } from './db/apply-schema';
 import { scheduleTokenCleanup } from './services/token-cleanup';
 
 import authRouter from './routes/auth';
@@ -120,9 +121,6 @@ app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
 const httpServer = http.createServer(app);
 initSocket(httpServer, parsedOrigins);
 
-// Schedule periodic cleanup of expired/revoked refresh tokens
-scheduleTokenCleanup();
-
 // Global safety nets for anything that slips past try/catch
 process.on('unhandledRejection', (reason) => {
   logger.error({ reason }, 'Unhandled Promise rejection');
@@ -150,8 +148,17 @@ const shutdown = async () => {
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
-httpServer.listen(config.port, () => {
-  logger.info(`Watchd server running on port ${config.port}`);
+async function start(): Promise<void> {
+  await applyDevSchemaIfEnabled();
+  scheduleTokenCleanup();
+  httpServer.listen(config.port, () => {
+    logger.info(`Watchd server running on port ${config.port}`);
+  });
+}
+
+void start().catch((err: unknown) => {
+  logger.fatal({ err }, 'Server start failed');
+  process.exit(1);
 });
 
 export { app };
