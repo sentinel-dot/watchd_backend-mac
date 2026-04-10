@@ -54,7 +54,7 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
       code = generateRoomCode();
       attempts++;
       if (attempts > 10) {
-        res.status(500).json({ error: 'Could not generate unique room code' });
+        res.status(500).json({ error: 'Eindeutiger Room-Code konnte nicht generiert werden' });
         return;
       }
       const [existing] = await pool.query<RoomRow[]>('SELECT id FROM rooms WHERE code = ?', [code]);
@@ -81,7 +81,7 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
     res.status(201).json({ room: rooms[0] });
   } catch (err) {
     logger.error({ err, userId }, 'Create room error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
@@ -91,7 +91,7 @@ router.post('/join', authMiddleware, async (req: Request, res: Response): Promis
   const { code } = req.body as { code?: string };
 
   if (!code) {
-    res.status(400).json({ error: 'code is required' });
+    res.status(400).json({ error: 'Code ist erforderlich' });
     return;
   }
 
@@ -102,14 +102,14 @@ router.post('/join', authMiddleware, async (req: Request, res: Response): Promis
     );
 
     if (rooms.length === 0) {
-      res.status(404).json({ error: 'Room not found' });
+      res.status(404).json({ error: 'Room nicht gefunden' });
       return;
     }
 
     const room = rooms[0];
 
     if (room.status === 'dissolved') {
-      res.status(410).json({ error: 'Room has been dissolved' });
+      res.status(410).json({ error: 'Room wurde aufgeloest' });
       return;
     }
 
@@ -141,7 +141,7 @@ router.post('/join', authMiddleware, async (req: Request, res: Response): Promis
     );
 
     if (countRows[0].count >= 2) {
-      res.status(409).json({ error: 'Room is full' });
+      res.status(409).json({ error: 'Room ist voll' });
       return;
     }
 
@@ -160,7 +160,7 @@ router.post('/join', authMiddleware, async (req: Request, res: Response): Promis
     res.json({ room });
   } catch (err) {
     logger.error({ err, userId }, 'Join room error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
@@ -170,7 +170,7 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
   const roomId = parseInt(req.params['id'], 10);
 
   if (isNaN(roomId)) {
-    res.status(400).json({ error: 'Invalid room id' });
+    res.status(400).json({ error: 'Ungueltige Room-ID' });
     return;
   }
 
@@ -181,7 +181,7 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
     );
 
     if (rooms.length === 0) {
-      res.status(404).json({ error: 'Room not found' });
+      res.status(404).json({ error: 'Room nicht gefunden' });
       return;
     }
 
@@ -190,7 +190,7 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
       [roomId, userId],
     );
     if (membership.length === 0) {
-      res.status(403).json({ error: 'Not a member of this room' });
+      res.status(403).json({ error: 'Kein Mitglied dieses Rooms' });
       return;
     }
 
@@ -205,7 +205,7 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
     res.json({ room: rooms[0], members });
   } catch (err) {
     logger.error({ err, userId, roomId }, 'Get room error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
@@ -225,7 +225,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
     res.json({ rooms });
   } catch (err) {
     logger.error({ err, userId }, 'Get rooms error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
@@ -235,12 +235,12 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response): Promis
   const { name } = req.body as { name?: string };
 
   if (isNaN(roomId)) {
-    res.status(400).json({ error: 'Invalid room id' });
+    res.status(400).json({ error: 'Ungueltige Room-ID' });
     return;
   }
 
   if (!name || name.length > 64) {
-    res.status(400).json({ error: 'Name must be between 1 and 64 characters' });
+    res.status(400).json({ error: 'Name muss zwischen 1 und 64 Zeichen lang sein' });
     return;
   }
 
@@ -250,7 +250,7 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response): Promis
       [roomId, userId],
     );
     if (membership.length === 0) {
-      res.status(403).json({ error: 'Not a member of this room' });
+      res.status(403).json({ error: 'Kein Mitglied dieses Rooms' });
       return;
     }
 
@@ -264,18 +264,41 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response): Promis
     res.json({ room: rooms[0] });
   } catch (err) {
     logger.error({ err, userId, roomId }, 'Update room name error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
 router.patch('/:id/filters', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as AuthRequest).user.userId;
   const roomId = parseInt(req.params['id'], 10);
-  const { filters } = req.body as { filters?: object };
+  const { filters } = req.body as { filters?: Record<string, unknown> };
 
   if (isNaN(roomId)) {
-    res.status(400).json({ error: 'Invalid room id' });
+    res.status(400).json({ error: 'Ungueltige Room-ID' });
     return;
+  }
+
+  // Validate filter shape to prevent arbitrary large payloads
+  if (filters) {
+    const { genres, streamingServices, yearFrom, minRating, maxRuntime, language } = filters as Record<string, unknown>;
+    if (genres !== undefined && (!Array.isArray(genres) || genres.length > 20)) {
+      res.status(400).json({ error: 'Maximal 20 Genres erlaubt' }); return;
+    }
+    if (streamingServices !== undefined && (!Array.isArray(streamingServices) || streamingServices.length > 10)) {
+      res.status(400).json({ error: 'Maximal 10 Streaming-Dienste erlaubt' }); return;
+    }
+    if (yearFrom !== undefined && (typeof yearFrom !== 'number' || yearFrom < 1900 || yearFrom > 2100)) {
+      res.status(400).json({ error: 'Ungueltige Jahresangabe' }); return;
+    }
+    if (minRating !== undefined && (typeof minRating !== 'number' || minRating < 0 || minRating > 10)) {
+      res.status(400).json({ error: 'Bewertung muss zwischen 0 und 10 liegen' }); return;
+    }
+    if (maxRuntime !== undefined && (typeof maxRuntime !== 'number' || maxRuntime < 1 || maxRuntime > 600)) {
+      res.status(400).json({ error: 'Ungueltige Laufzeit' }); return;
+    }
+    if (language !== undefined && (typeof language !== 'string' || language.length > 5)) {
+      res.status(400).json({ error: 'Ungueltige Sprache' }); return;
+    }
   }
 
   try {
@@ -284,7 +307,7 @@ router.patch('/:id/filters', authMiddleware, async (req: Request, res: Response)
       [roomId, userId],
     );
     if (membership.length === 0) {
-      res.status(403).json({ error: 'Not a member of this room' });
+      res.status(403).json({ error: 'Kein Mitglied dieses Rooms' });
       return;
     }
 
@@ -304,7 +327,7 @@ router.patch('/:id/filters', authMiddleware, async (req: Request, res: Response)
     res.json({ room: rooms[0] });
   } catch (err) {
     logger.error({ err, userId, roomId }, 'Update room filters error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
@@ -313,7 +336,7 @@ router.delete('/:id/leave', authMiddleware, async (req: Request, res: Response):
   const roomId = parseInt(req.params['id'], 10);
 
   if (isNaN(roomId)) {
-    res.status(400).json({ error: 'Invalid room id' });
+    res.status(400).json({ error: 'Ungueltige Room-ID' });
     return;
   }
 
@@ -323,7 +346,7 @@ router.delete('/:id/leave', authMiddleware, async (req: Request, res: Response):
       [roomId, userId],
     );
     if (membership.length === 0) {
-      res.status(404).json({ error: 'Not a member of this room' });
+      res.status(404).json({ error: 'Kein Mitglied dieses Rooms' });
       return;
     }
 
@@ -368,7 +391,7 @@ router.delete('/:id/leave', authMiddleware, async (req: Request, res: Response):
     res.json({ lastMember });
   } catch (err) {
     logger.error({ err, userId, roomId }, 'Leave room error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
@@ -379,7 +402,7 @@ router.delete('/:id/archive', authMiddleware, async (req: Request, res: Response
   const roomId = parseInt(req.params['id'], 10);
 
   if (isNaN(roomId)) {
-    res.status(400).json({ error: 'Invalid room id' });
+    res.status(400).json({ error: 'Ungueltige Room-ID' });
     return;
   }
 
@@ -390,12 +413,12 @@ router.delete('/:id/archive', authMiddleware, async (req: Request, res: Response
     );
 
     if (rooms.length === 0) {
-      res.status(404).json({ error: 'Room not found' });
+      res.status(404).json({ error: 'Room nicht gefunden' });
       return;
     }
 
     if (rooms[0].status !== 'dissolved') {
-      res.status(400).json({ error: 'Room is not archived' });
+      res.status(400).json({ error: 'Room ist nicht archiviert' });
       return;
     }
 
@@ -404,7 +427,7 @@ router.delete('/:id/archive', authMiddleware, async (req: Request, res: Response
       [roomId, userId],
     );
     if (membership.length === 0) {
-      res.status(403).json({ error: 'Not a member or already deleted' });
+      res.status(403).json({ error: 'Kein Mitglied oder bereits geloescht' });
       return;
     }
 
@@ -426,7 +449,7 @@ router.delete('/:id/archive', authMiddleware, async (req: Request, res: Response
     res.json({ deleted: true });
   } catch (err) {
     logger.error({ err, userId, roomId }, 'Delete from archive error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 

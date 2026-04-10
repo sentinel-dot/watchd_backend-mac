@@ -31,7 +31,7 @@ router.get('/rooms/:roomId/next-movie', authMiddleware, async (req: Request, res
   const roomId = parseInt(req.params['roomId'], 10);
 
   if (isNaN(roomId)) {
-    res.status(400).json({ error: 'Invalid roomId' });
+    res.status(400).json({ error: 'Ungueltige Room-ID' });
     return;
   }
 
@@ -41,7 +41,7 @@ router.get('/rooms/:roomId/next-movie', authMiddleware, async (req: Request, res
       [roomId, userId],
     );
     if (membership.length === 0) {
-      res.status(403).json({ error: 'Not a member of this room' });
+      res.status(403).json({ error: 'Kein Mitglied dieses Rooms' });
       return;
     }
 
@@ -82,7 +82,7 @@ router.get('/rooms/:roomId/next-movie', authMiddleware, async (req: Request, res
     });
   } catch (err) {
     logger.error({ err, userId, roomId }, 'Next movie error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
@@ -93,7 +93,7 @@ router.get('/feed', authMiddleware, async (req: Request, res: Response): Promise
   const page = Math.max(1, parseInt((req.query['page'] as string) ?? '1', 10));
 
   if (isNaN(roomId)) {
-    res.status(400).json({ error: 'roomId query parameter is required' });
+    res.status(400).json({ error: 'roomId Parameter ist erforderlich' });
     return;
   }
 
@@ -103,7 +103,7 @@ router.get('/feed', authMiddleware, async (req: Request, res: Response): Promise
       [roomId, userId],
     );
     if (membership.length === 0) {
-      res.status(403).json({ error: 'Not a member of this room' });
+      res.status(403).json({ error: 'Kein Mitglied dieses Rooms' });
       return;
     }
 
@@ -145,7 +145,7 @@ router.get('/feed', authMiddleware, async (req: Request, res: Response): Promise
     res.json({ page, movies: results });
   } catch (err) {
     logger.error({ err, userId, roomId }, 'Movie feed error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 

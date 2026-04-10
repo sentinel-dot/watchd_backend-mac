@@ -8,6 +8,29 @@ import { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 const router = Router();
 
+// ── Concurrency-Limiter für externe APIs ──────────────────────────
+// Verhindert, dass bei vielen Matches/Favorites hunderte parallele
+// Requests an TMDB/JustWatch gehen. Max 6 gleichzeitig.
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let idx = 0;
+
+  async function worker() {
+    while (idx < items.length) {
+      const i = idx++;
+      results[i] = await fn(items[i]);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 interface MatchRow extends RowDataPacket {
   id: number;
   room_id: number;
@@ -20,6 +43,10 @@ interface MembershipRow extends RowDataPacket {
   user_id: number;
 }
 
+interface CountRow extends RowDataPacket {
+  total: number;
+}
+
 interface FavoriteRow extends RowDataPacket {
   id: number;
   movie_id: number;
@@ -29,9 +56,11 @@ interface FavoriteRow extends RowDataPacket {
 router.get('/:roomId', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as AuthRequest).user.userId;
   const roomId = parseInt(req.params['roomId'], 10);
+  const limit = Math.min(Math.max(parseInt(req.query['limit'] as string, 10) || 20, 1), 50);
+  const offset = Math.max(parseInt(req.query['offset'] as string, 10) || 0, 0);
 
   if (isNaN(roomId)) {
-    res.status(400).json({ error: 'Invalid roomId' });
+    res.status(400).json({ error: 'Ungueltige Room-ID' });
     return;
   }
 
@@ -41,17 +70,22 @@ router.get('/:roomId', authMiddleware, async (req: Request, res: Response): Prom
       [roomId, userId],
     );
     if (membership.length === 0) {
-      res.status(403).json({ error: 'Not a member of this room' });
+      res.status(403).json({ error: 'Kein Mitglied dieses Rooms' });
       return;
     }
 
-    const [matchRows] = await pool.query<MatchRow[]>(
-      'SELECT id, room_id, movie_id, matched_at, COALESCE(watched, FALSE) AS watched FROM matches WHERE room_id = ? ORDER BY matched_at DESC',
+    const [countResult] = await pool.query<CountRow[]>(
+      'SELECT COUNT(*) AS total FROM matches WHERE room_id = ?',
       [roomId],
     );
+    const total = countResult[0].total;
 
-    const matches = await Promise.all(
-      matchRows.map(async (match) => {
+    const [matchRows] = await pool.query<MatchRow[]>(
+      'SELECT id, room_id, movie_id, matched_at, COALESCE(watched, FALSE) AS watched FROM matches WHERE room_id = ? ORDER BY matched_at DESC LIMIT ? OFFSET ?',
+      [roomId, limit, offset],
+    );
+
+    const matches = await mapWithConcurrency(matchRows, 6, async (match: MatchRow) => {
         try {
           const movie = await getMovieById(match.movie_id);
           const releaseYear = movie.release_date ? parseInt(movie.release_date.slice(0, 4), 10) : new Date().getFullYear();
@@ -93,13 +127,12 @@ router.get('/:roomId', authMiddleware, async (req: Request, res: Response): Prom
             streamingOptions: [],
           };
         }
-      }),
-    );
+      });
 
-    res.json({ matches });
+    res.json({ matches, pagination: { total, limit, offset, hasMore: offset + limit < total } });
   } catch (err) {
     logger.error({ err, userId, roomId }, 'Get matches error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
@@ -109,12 +142,12 @@ router.patch('/:matchId', authMiddleware, async (req: Request, res: Response): P
   const { watched } = req.body as { watched?: boolean };
 
   if (isNaN(matchId)) {
-    res.status(400).json({ error: 'Invalid matchId' });
+    res.status(400).json({ error: 'Ungueltige Match-ID' });
     return;
   }
 
   if (typeof watched !== 'boolean') {
-    res.status(400).json({ error: 'watched must be a boolean' });
+    res.status(400).json({ error: 'watched muss ein Boolean sein' });
     return;
   }
 
@@ -122,7 +155,7 @@ router.patch('/:matchId', authMiddleware, async (req: Request, res: Response): P
     const [matches] = await pool.query<MatchRow[]>('SELECT room_id FROM matches WHERE id = ?', [matchId]);
 
     if (matches.length === 0) {
-      res.status(404).json({ error: 'Match not found' });
+      res.status(404).json({ error: 'Match nicht gefunden' });
       return;
     }
 
@@ -133,7 +166,7 @@ router.patch('/:matchId', authMiddleware, async (req: Request, res: Response): P
       [roomId, userId],
     );
     if (membership.length === 0) {
-      res.status(403).json({ error: 'Not a member of this room' });
+      res.status(403).json({ error: 'Kein Mitglied dieses Rooms' });
       return;
     }
 
@@ -142,7 +175,7 @@ router.patch('/:matchId', authMiddleware, async (req: Request, res: Response): P
     res.json({ message: 'Match updated', matchId, watched });
   } catch (err) {
     logger.error({ err, userId, matchId }, 'Update match error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
@@ -151,7 +184,7 @@ router.post('/favorites', authMiddleware, async (req: Request, res: Response): P
   const { movieId } = req.body as { movieId?: number };
 
   if (!movieId) {
-    res.status(400).json({ error: 'movieId is required' });
+    res.status(400).json({ error: 'movieId ist erforderlich' });
     return;
   }
 
@@ -164,7 +197,7 @@ router.post('/favorites', authMiddleware, async (req: Request, res: Response): P
     res.status(201).json({ message: 'Favorite added', movieId });
   } catch (err) {
     logger.error({ err, userId, movieId }, 'Add favorite error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
@@ -173,7 +206,7 @@ router.delete('/favorites/:movieId', authMiddleware, async (req: Request, res: R
   const movieId = parseInt(req.params['movieId'], 10);
 
   if (isNaN(movieId)) {
-    res.status(400).json({ error: 'Invalid movieId' });
+    res.status(400).json({ error: 'Ungueltige Movie-ID' });
     return;
   }
 
@@ -183,21 +216,28 @@ router.delete('/favorites/:movieId', authMiddleware, async (req: Request, res: R
     res.json({ message: 'Favorite removed', movieId });
   } catch (err) {
     logger.error({ err, userId, movieId }, 'Remove favorite error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
 router.get('/favorites/list', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as AuthRequest).user.userId;
+  const limit = Math.min(Math.max(parseInt(req.query['limit'] as string, 10) || 20, 1), 50);
+  const offset = Math.max(parseInt(req.query['offset'] as string, 10) || 0, 0);
 
   try {
-    const [favoriteRows] = await pool.query<FavoriteRow[]>(
-      'SELECT id, movie_id, created_at FROM favorites WHERE user_id = ? ORDER BY created_at DESC',
+    const [countResult] = await pool.query<CountRow[]>(
+      'SELECT COUNT(*) AS total FROM favorites WHERE user_id = ?',
       [userId],
     );
+    const total = countResult[0].total;
 
-    const favorites = await Promise.all(
-      favoriteRows.map(async (fav) => {
+    const [favoriteRows] = await pool.query<FavoriteRow[]>(
+      'SELECT id, movie_id, created_at FROM favorites WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      [userId, limit, offset],
+    );
+
+    const favorites = await mapWithConcurrency(favoriteRows, 6, async (fav: FavoriteRow) => {
         try {
           const movie = await getMovieById(fav.movie_id);
           const releaseYear = movie.release_date ? parseInt(movie.release_date.slice(0, 4), 10) : new Date().getFullYear();
@@ -234,13 +274,12 @@ router.get('/favorites/list', authMiddleware, async (req: Request, res: Response
             streamingOptions: [],
           };
         }
-      }),
-    );
+      });
 
-    res.json({ favorites });
+    res.json({ favorites, pagination: { total, limit, offset, hasMore: offset + limit < total } });
   } catch (err) {
     logger.error({ err, userId }, 'Get favorites error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 

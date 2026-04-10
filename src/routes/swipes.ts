@@ -22,12 +22,12 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
   };
 
   if (!movieId || !roomId || !direction) {
-    res.status(400).json({ error: 'movieId, roomId and direction are required' });
+    res.status(400).json({ error: 'movieId, roomId und direction sind erforderlich' });
     return;
   }
 
   if (direction !== 'left' && direction !== 'right') {
-    res.status(400).json({ error: 'direction must be "left" or "right"' });
+    res.status(400).json({ error: 'direction muss "left" oder "right" sein' });
     return;
   }
 
@@ -37,7 +37,7 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
       [roomId, userId],
     );
     if (membership.length === 0) {
-      res.status(403).json({ error: 'Not a member of this room' });
+      res.status(403).json({ error: 'Kein Mitglied dieses Rooms' });
       return;
     }
 
@@ -73,7 +73,7 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
     });
   } catch (err) {
     logger.error({ err, userId, movieId, roomId }, 'Swipe error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 

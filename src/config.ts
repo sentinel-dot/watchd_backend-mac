@@ -9,8 +9,13 @@ function requireEnv(name: string): string {
 
 export const config = {
   port: parseInt(process.env['PORT'] ?? '3000', 10),
+  nodeEnv: process.env['NODE_ENV'] ?? 'development',
   jwtSecret: requireEnv('JWT_SECRET'),
+  jwtRefreshSecret: requireEnv('JWT_REFRESH_SECRET'),
   tmdbApiKey: requireEnv('TMDB_API_KEY'),
+  /** Read token for TMDB v4 API – used as Bearer token instead of query-param api_key. */
+  tmdbReadAccessToken: process.env['TMDB_READ_ACCESS_TOKEN'] ?? '',
+  corsOrigins: process.env['CORS_ORIGINS'] ?? '*',
   db: {
     host: requireEnv('DB_HOST'),
     port: parseInt(process.env['DB_PORT'] ?? '3306', 10),
@@ -18,4 +23,13 @@ export const config = {
     password: requireEnv('DB_PASSWORD'),
     name: requireEnv('DB_NAME'),
   },
+  smtp: {
+    host: process.env['SMTP_HOST'] ?? '',
+    port: parseInt(process.env['SMTP_PORT'] ?? '587', 10),
+    secure: process.env['SMTP_SECURE'] === 'true',
+    user: process.env['SMTP_USER'] ?? '',
+    password: process.env['SMTP_PASSWORD'] ?? '',
+    from: process.env['SMTP_FROM'] ?? 'noreply@watchd.app',
+  },
+  appUrl: process.env['APP_URL'] ?? 'https://watchd.app',
 };

@@ -36,7 +36,7 @@ router.patch(
       ]);
 
       if (users.length === 0) {
-        res.status(404).json({ error: 'User not found' });
+        res.status(404).json({ error: 'Benutzer nicht gefunden' });
         return;
       }
 
@@ -50,7 +50,7 @@ router.patch(
       });
     } catch (err) {
       logger.error({ err, userId }, 'Update user error');
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Interner Serverfehler' });
     }
   },
 );

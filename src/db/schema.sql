@@ -133,5 +133,21 @@ CREATE TABLE `favorites` (
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Refresh tokens table (for JWT token rotation)
+CREATE TABLE `refresh_tokens` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `token_hash` VARCHAR(64) NOT NULL,
+  `family_id` VARCHAR(36) NOT NULL COMMENT 'Groups tokens for rotation detection',
+  `expires_at` DATETIME NOT NULL,
+  `revoked` BOOLEAN DEFAULT FALSE,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `unique_token_hash` (`token_hash`),
+  INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_family_id` (`family_id`),
+  INDEX `idx_expires_at` (`expires_at`),
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Done
 SELECT 'Database schema created successfully!' AS status;

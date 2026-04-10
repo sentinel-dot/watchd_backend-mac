@@ -1,4 +1,5 @@
 import { pool } from '../db/connection';
+import { config } from '../config';
 import { logger } from '../logger';
 import { ResultSetHeader } from 'mysql2';
 
@@ -23,19 +24,25 @@ export async function generateRoomStack(roomId: number, filters: RoomFilters): P
   try {
     await pool.query('DELETE FROM room_stack WHERE room_id = ?', [roomId]);
 
-    const tmdbApiKey = process.env['TMDB_API_KEY'];
-    if (!tmdbApiKey) {
-      throw new Error('TMDB_API_KEY not configured');
+    if (!config.tmdbApiKey && !config.tmdbReadAccessToken) {
+      throw new Error('TMDB API credentials not configured');
     }
 
     const movieIds: number[] = [];
 
     for (let page = 1; page <= 5; page++) {
       const url = new URL('https://api.themoviedb.org/3/discover/movie');
-      url.searchParams.set('api_key', tmdbApiKey);
       url.searchParams.set('language', 'de');
       url.searchParams.set('sort_by', 'popularity.desc');
       url.searchParams.set('page', String(page));
+
+      // Use Bearer token when available, otherwise fall back to api_key
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (config.tmdbReadAccessToken) {
+        headers['Authorization'] = `Bearer ${config.tmdbReadAccessToken}`;
+      } else {
+        url.searchParams.set('api_key', config.tmdbApiKey);
+      }
 
       if (filters.genres && filters.genres.length > 0) {
         url.searchParams.set('with_genres', filters.genres.join(','));
@@ -67,7 +74,7 @@ export async function generateRoomStack(roomId: number, filters: RoomFilters): P
         }
       }
 
-      const response = await fetch(url.toString());
+      const response = await fetch(url.toString(), { headers });
       if (!response.ok) {
         logger.error({ status: response.status, page }, 'TMDB request failed for room stack generation');
         break;

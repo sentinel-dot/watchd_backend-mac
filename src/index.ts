@@ -2,12 +2,14 @@ import 'dotenv/config';
 import path from 'path';
 import http from 'http';
 import express, { Request, Response, NextFunction } from 'express';
+import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { config } from './config';
 import { initSocket } from './socket';
 import { logger } from './logger';
 import { pool } from './db/connection';
+import { scheduleTokenCleanup } from './services/token-cleanup';
 
 import authRouter from './routes/auth';
 import usersRouter from './routes/users';
@@ -18,8 +20,21 @@ import matchesRouter from './routes/matches';
 
 const app = express();
 
-app.use(cors());
-app.use(express.json());
+// Security headers (OWASP best practices)
+app.use(helmet({
+  contentSecurityPolicy: false, // API only, no HTML served
+  crossOriginEmbedderPolicy: false,
+}));
+
+// CORS – restrict origins in production, allow all in development
+const corsOrigins = config.corsOrigins;
+const parsedOrigins = corsOrigins === '*' ? '*' : corsOrigins.split(',').map((s: string) => s.trim());
+app.use(cors({
+  origin: parsedOrigins,
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+app.use(express.json({ limit: '1mb' }));
 
 // Statische Dateien (Streaming-Icons etc.) unter /icons/*
 const publicDir = path.join(process.cwd(), 'public');
@@ -90,7 +105,7 @@ app.get('/health', async (_req, res) => {
 
 // Catch-all for unknown routes
 app.use((_req: Request, res: Response) => {
-  res.status(404).json({ error: 'Not found' });
+  res.status(404).json({ error: 'Nicht gefunden' });
 });
 
 // Express error middleware — catches errors passed via next(err) or thrown in async handlers
@@ -98,12 +113,15 @@ app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
   const message = err instanceof Error ? err.message : String(err);
   logger.error({ err, method: req.method, url: req.url }, `Unhandled route error: ${message}`);
   if (!res.headersSent) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
 const httpServer = http.createServer(app);
-initSocket(httpServer);
+initSocket(httpServer, parsedOrigins);
+
+// Schedule periodic cleanup of expired/revoked refresh tokens
+scheduleTokenCleanup();
 
 // Global safety nets for anything that slips past try/catch
 process.on('unhandledRejection', (reason) => {
