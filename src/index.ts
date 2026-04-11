@@ -21,6 +21,10 @@ import matchesRouter from './routes/matches';
 
 const app = express();
 
+// Railway (and most PaaS) terminate TLS and forward via reverse proxy.
+// Trust the first hop so express-rate-limit can read X-Forwarded-For correctly.
+app.set('trust proxy', 1);
+
 // Security headers (OWASP best practices)
 app.use(helmet({
   contentSecurityPolicy: false, // API only, no HTML served

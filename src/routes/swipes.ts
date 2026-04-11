@@ -78,6 +78,7 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
           [roomId],
         );
         const tokens = tokenRows.map(r => r.device_token).filter((t): t is string => t !== null);
+        logger.info({ roomId, tokenCount: tokens.length }, 'APNs: device tokens found for room');
         if (tokens.length > 0) {
           sendMatchPush(tokens, result.movieTitle ?? 'einem Film').catch(err =>
             logger.error({ err }, 'APNs push failed'),
