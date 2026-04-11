@@ -55,4 +55,28 @@ router.patch(
   },
 );
 
+router.post(
+  '/me/device-token',
+  authMiddleware,
+  [body('deviceToken').isString().trim().isLength({ min: 32, max: 255 }).withMessage('Invalid device token')],
+  async (req: Request, res: Response): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ error: errors.array()[0].msg });
+      return;
+    }
+
+    const userId = (req as AuthRequest).user.userId;
+    const { deviceToken } = req.body as { deviceToken: string };
+
+    try {
+      await pool.query('UPDATE users SET device_token = ? WHERE id = ?', [deviceToken, userId]);
+      res.status(204).send();
+    } catch (err) {
+      logger.error({ err, userId }, 'Save device token error');
+      res.status(500).json({ error: 'Interner Serverfehler' });
+    }
+  },
+);
+
 export default router;

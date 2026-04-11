@@ -32,4 +32,10 @@ export const config = {
     from: process.env['SMTP_FROM'] ?? 'noreply@watchd.app',
   },
   appUrl: process.env['APP_URL'] ?? 'https://watchd.app',
+  apns: {
+    keyId: process.env['APNS_KEY_ID'] ?? '',
+    teamId: process.env['APNS_TEAM_ID'] ?? '',
+    // Base64-encoded contents of the .p8 file (avoids newline issues in env vars)
+    key: process.env['APNS_PRIVATE_KEY'] ?? '',
+  },
 };

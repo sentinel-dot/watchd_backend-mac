@@ -3,6 +3,7 @@ import { pool } from '../db/connection';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { logger } from '../logger';
 import { checkAndCreateMatch } from '../services/matchmaking';
+import { sendMatchPush } from '../services/apns';
 import { getIo } from '../socket';
 import { SocketEvents } from '../socket/events';
 import { RowDataPacket } from 'mysql2';
@@ -11,6 +12,10 @@ const router = Router();
 
 interface MembershipRow extends RowDataPacket {
   user_id: number;
+}
+
+interface DeviceTokenRow extends RowDataPacket {
+  device_token: string | null;
 }
 
 router.post('/', authMiddleware, async (req: Request, res: Response): Promise<void> => {
@@ -64,6 +69,20 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
           posterPath: result.posterPath,
           streamingOptions: result.streamingOptions ?? [],
         });
+
+        // Send push notifications to all room members who have a device token
+        const [tokenRows] = await pool.query<DeviceTokenRow[]>(
+          `SELECT u.device_token FROM users u
+           INNER JOIN room_members rm ON rm.user_id = u.id
+           WHERE rm.room_id = ? AND u.device_token IS NOT NULL`,
+          [roomId],
+        );
+        const tokens = tokenRows.map(r => r.device_token).filter((t): t is string => t !== null);
+        if (tokens.length > 0) {
+          sendMatchPush(tokens, result.movieTitle ?? 'einem Film').catch(err =>
+            logger.error({ err }, 'APNs push failed'),
+          );
+        }
       }
     }
 

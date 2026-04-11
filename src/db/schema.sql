@@ -23,6 +23,7 @@ CREATE TABLE `users` (
   `email` VARCHAR(254) NULL,
   `password_hash` VARCHAR(255) NULL,
   `is_guest` BOOLEAN DEFAULT FALSE,
+  `device_token` VARCHAR(255) NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY `unique_email` (`email`),
   INDEX `idx_email` (`email`),

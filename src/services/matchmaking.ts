@@ -21,10 +21,6 @@ interface MemberRow extends RowDataPacket {
   user_id: number;
 }
 
-interface MatchExistsRow extends RowDataPacket {
-  id: number;
-}
-
 export async function checkAndCreateMatch(
   userId: number,
   movieId: number,
@@ -59,20 +55,15 @@ export async function checkAndCreateMatch(
     return { isMatch: false };
   }
 
-  const [existing] = await pool.query<MatchExistsRow[]>(
-    'SELECT id FROM matches WHERE room_id = ? AND movie_id = ?',
+  const [result] = await pool.query<ResultSetHeader>(
+    'INSERT IGNORE INTO matches (room_id, movie_id) VALUES (?, ?)',
     [roomId, movieId],
   );
 
-  if (existing.length > 0) {
-    logger.info({ roomId, movieId, existingMatchId: existing[0].id }, 'Match already exists');
+  if (result.affectedRows === 0) {
+    logger.info({ roomId, movieId }, 'Match already exists, skipping duplicate');
     return { isMatch: false };
   }
-
-  const [result] = await pool.query<ResultSetHeader>(
-    'INSERT INTO matches (room_id, movie_id) VALUES (?, ?)',
-    [roomId, movieId],
-  );
 
   const matchId = result.insertId;
 

@@ -11,6 +11,7 @@
     "download-icons": "ts-node src/scripts/download-provider-icons.ts"
   },
   "dependencies": {
+    "@parse/node-apn": "^8.0.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

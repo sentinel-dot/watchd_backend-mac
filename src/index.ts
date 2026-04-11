@@ -49,6 +49,16 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// 120 swipes/min (2/s average) — generous for real usage, blocks scripting.
+// Keyed by IP; the authenticated userId is not yet available at middleware level.
+const swipeLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 120,
+  message: { error: 'Zu viele Swipes. Bitte kurz warten.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
@@ -57,7 +67,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/rooms', roomsRouter);
 app.use('/api/movies', moviesRouter);
-app.use('/api/swipes', swipesRouter);
+app.use('/api/swipes', swipeLimiter, swipesRouter);
 app.use('/api/matches', matchesRouter);
 
 app.get('/health', async (_req, res) => {
