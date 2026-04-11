@@ -37,5 +37,7 @@ export const config = {
     teamId: process.env['APNS_TEAM_ID'] ?? '',
     // Base64-encoded contents of the .p8 file (avoids newline issues in env vars)
     key: process.env['APNS_PRIVATE_KEY'] ?? '',
+    // false = sandbox (debug builds on device), true = production (App Store / TestFlight)
+    production: process.env['APNS_PRODUCTION'] === 'true',
   },
 };

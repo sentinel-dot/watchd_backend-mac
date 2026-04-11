@@ -21,7 +21,7 @@ function getProvider(): apn.Provider | null {
         keyId,
         teamId,
       },
-      production: config.nodeEnv === 'production',
+      production: config.apns.production,
     });
     logger.info('APNs provider initialized');
     return provider;
