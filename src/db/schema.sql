@@ -6,6 +6,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 -- Drop existing tables
 DROP TABLE IF EXISTS `password_reset_tokens`;
+DROP TABLE IF EXISTS `refresh_tokens`;
 DROP TABLE IF EXISTS `favorites`;
 DROP TABLE IF EXISTS `room_stack`;
 DROP TABLE IF EXISTS `matches`;
