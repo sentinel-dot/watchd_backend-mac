@@ -20,7 +20,9 @@ export async function sendPasswordResetEmail(
   to: string,
   resetToken: string,
 ): Promise<void> {
-  const deepLink = `watchd://reset-password?token=${resetToken}`;
+  // Universal Link — iOS intercepts this and opens the app directly when installed.
+  // Falls back to the /reset-password HTML page when the app is absent.
+  const deepLink = `${config.appUrl}/reset-password?token=${resetToken}`;
 
   const html = `
 <!DOCTYPE html>
@@ -57,7 +59,7 @@ export async function sendPasswordResetEmail(
     'Watchd – Passwort zurücksetzen',
     '',
     'Du hast eine Passwort-Zurücksetzung angefordert.',
-    'Öffne diesen Link in der Watchd-App, um ein neues Passwort zu setzen:',
+    'Tippe auf den Link, um ihn in der Watchd-App zu öffnen:',
     '',
     deepLink,
     '',

@@ -54,6 +54,9 @@ CREATE TABLE `rooms` (
   `filters` JSON NULL,
   `last_activity_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `stack_next_page` INT NOT NULL DEFAULT 6,
+  `stack_generating` TINYINT(1) NOT NULL DEFAULT 0,
+  `stack_exhausted` TINYINT(1) NOT NULL DEFAULT 0,
   UNIQUE KEY `unique_code` (`code`),
   INDEX `idx_code` (`code`),
   INDEX `idx_created_by` (`created_by`),
@@ -85,6 +88,7 @@ CREATE TABLE `room_stack` (
   `movie_id` INT NOT NULL,
   `position` INT NOT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `unique_room_movie` (`room_id`, `movie_id`),
   INDEX `idx_room_position` (`room_id`, `position`),
   INDEX `idx_movie_id` (`movie_id`),
   FOREIGN KEY (`room_id`) REFERENCES `rooms`(`id`) ON DELETE CASCADE

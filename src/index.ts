@@ -118,6 +118,65 @@ app.get('/health', async (_req, res) => {
   res.json(healthData);
 });
 
+// Apple App Site Association — must be served before the catch-all, no auth, no redirect.
+// Apple crawls this during app install to establish the applinks entitlement.
+app.get('/.well-known/apple-app-site-association', (_req, res) => {
+  res.json({
+    applinks: {
+      details: [
+        {
+          appIDs: [`${config.apns.teamId}.com.watchd.app`],
+          components: [{ '/': '/reset-password*' }],
+        },
+      ],
+    },
+  });
+});
+
+// Fallback page for Universal Links when the app is not installed.
+// iOS intercepts /reset-password before this is ever reached if the app is present.
+app.get('/reset-password', (req: Request, res: Response) => {
+  const token = typeof req.query['token'] === 'string' ? req.query['token'] : '';
+  const deepLink = token ? `watchd://reset-password?token=${encodeURIComponent(token)}` : '';
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Watchd – Passwort zurücksetzen</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#141414;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{background:#1e1e1e;border-radius:12px;padding:40px 32px;max-width:480px;width:100%;text-align:center}
+    h1{color:#E50914;font-size:28px;font-weight:700;letter-spacing:2px;margin-bottom:32px}
+    h2{font-size:20px;font-weight:600;margin-bottom:16px}
+    p{color:#aaa;font-size:15px;line-height:1.6;margin-bottom:16px}
+    .btn{display:inline-block;background:#E50914;color:#fff;font-size:16px;font-weight:600;text-decoration:none;padding:14px 32px;border-radius:6px;margin:8px 0}
+    .btn-secondary{background:transparent;border:1px solid #555;color:#ccc;font-size:14px;padding:10px 24px}
+    .hint{font-size:13px;color:#666;margin-top:24px;line-height:1.5}
+    .divider{border:none;border-top:1px solid #333;margin:24px 0}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>WATCHD</h1>
+    <h2>Passwort zurücksetzen</h2>
+    <p>Um dein Passwort zurückzusetzen, öffne diesen Link in der Watchd-App.</p>
+    ${deepLink ? `
+    <hr class="divider">
+    <p>Hast du die App bereits installiert?</p>
+    <a href="${deepLink}" class="btn">In App öffnen</a>
+    <hr class="divider">
+    ` : ''}
+    <p>Du hast die App noch nicht installiert?<br>Bitte installiere Watchd zuerst und fordere danach einen neuen Reset-Link an — der Link ist nur <strong style="color:#fff">1 Stunde</strong> gültig.</p>
+    <p class="hint">Falls du diese E-Mail nicht angefordert hast, kannst du sie ignorieren.</p>
+  </div>
+</body>
+</html>`);
+});
+
 // Catch-all for unknown routes
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'Nicht gefunden' });

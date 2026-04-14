@@ -4,9 +4,12 @@ import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { logger } from '../logger';
 import { getPopularMovies, getMovieById, TmdbMovie } from '../services/tmdb';
 import { getStreamingOffers, StreamingOffer } from '../services/justwatch';
-import { RowDataPacket } from 'mysql2';
+import { appendRoomStack } from '../services/room-stack';
+import { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 const router = Router();
+
+const REFILL_THRESHOLD = 10;
 
 interface SwipedRow extends RowDataPacket {
   movie_id: number;
@@ -21,9 +24,29 @@ interface StackRow extends RowDataPacket {
   position: number;
 }
 
+interface RoomStateRow extends RowDataPacket {
+  stack_generating: number;
+  stack_exhausted: number;
+}
+
 export interface MovieWithStreaming extends TmdbMovie {
   streamingOptions: StreamingOffer[];
   genre_ids: number[];
+}
+
+function triggerRefillIfNeeded(roomId: number, unseenCount: number, roomState: RoomStateRow): void {
+  if (unseenCount > REFILL_THRESHOLD || roomState.stack_exhausted) return;
+
+  pool
+    .query<ResultSetHeader>('UPDATE rooms SET stack_generating = 1 WHERE id = ? AND stack_generating = 0', [roomId])
+    .then(([result]) => {
+      if (result.affectedRows > 0) {
+        appendRoomStack(roomId).catch((err) =>
+          logger.error({ err, roomId }, 'Background stack refill failed'),
+        );
+      }
+    })
+    .catch((err) => logger.error({ err, roomId }, 'Failed to acquire stack_generating lock'));
 }
 
 router.get('/rooms/:roomId/next-movie', authMiddleware, async (req: Request, res: Response): Promise<void> => {
@@ -45,18 +68,26 @@ router.get('/rooms/:roomId/next-movie', authMiddleware, async (req: Request, res
       return;
     }
 
-    const [swiped] = await pool.query<SwipedRow[]>('SELECT movie_id FROM swipes WHERE user_id = ? AND room_id = ?', [
-      userId,
-      roomId,
+    const [[roomState], [swiped], [stackRows]] = await Promise.all([
+      pool.query<RoomStateRow[]>(
+        'SELECT stack_generating, stack_exhausted FROM rooms WHERE id = ?',
+        [roomId],
+      ),
+      pool.query<SwipedRow[]>('SELECT movie_id FROM swipes WHERE user_id = ? AND room_id = ?', [userId, roomId]),
+      pool.query<StackRow[]>(
+        'SELECT movie_id, position FROM room_stack WHERE room_id = ? ORDER BY position ASC',
+        [roomId],
+      ),
     ]);
-    const swipedIds = new Set(swiped.map((r) => r.movie_id));
 
-    const [stackRows] = await pool.query<StackRow[]>(
-      'SELECT movie_id, position FROM room_stack WHERE room_id = ? ORDER BY position ASC',
-      [roomId],
-    );
+    const swipedIds = new Set((swiped as SwipedRow[]).map((r) => r.movie_id));
+    const unseenMovies = (stackRows as StackRow[]).filter((row) => !swipedIds.has(row.movie_id));
 
-    const nextMovie = stackRows.find((row) => !swipedIds.has(row.movie_id));
+    if (roomState.length > 0) {
+      triggerRefillIfNeeded(roomId, unseenMovies.length, (roomState as RoomStateRow[])[0]);
+    }
+
+    const nextMovie = unseenMovies[0];
 
     if (!nextMovie) {
       res.json({ movie: null, stackEmpty: true });
@@ -86,11 +117,12 @@ router.get('/rooms/:roomId/next-movie', authMiddleware, async (req: Request, res
   }
 });
 
-// GET /api/movies/feed?roomId=&page=
+// GET /api/movies/feed?roomId=&afterPosition=
 router.get('/feed', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as AuthRequest).user.userId;
   const roomId = parseInt(req.query['roomId'] as string, 10);
-  const page = Math.max(1, parseInt((req.query['page'] as string) ?? '1', 10));
+  const rawAfterPosition = parseInt((req.query['afterPosition'] as string) ?? '0', 10);
+  const afterPosition = isNaN(rawAfterPosition) ? 0 : rawAfterPosition;
 
   if (isNaN(roomId)) {
     res.status(400).json({ error: 'roomId Parameter ist erforderlich' });
@@ -107,24 +139,31 @@ router.get('/feed', authMiddleware, async (req: Request, res: Response): Promise
       return;
     }
 
-    const [swiped] = await pool.query<SwipedRow[]>('SELECT movie_id FROM swipes WHERE user_id = ? AND room_id = ?', [
-      userId,
-      roomId,
+    const [[roomState], [swiped], [stackRows]] = await Promise.all([
+      pool.query<RoomStateRow[]>(
+        'SELECT stack_generating, stack_exhausted FROM rooms WHERE id = ?',
+        [roomId],
+      ),
+      pool.query<SwipedRow[]>('SELECT movie_id FROM swipes WHERE user_id = ? AND room_id = ?', [userId, roomId]),
+      pool.query<StackRow[]>(
+        'SELECT movie_id, position FROM room_stack WHERE room_id = ? ORDER BY position ASC',
+        [roomId],
+      ),
     ]);
-    const swipedIds = new Set(swiped.map((r) => r.movie_id));
 
-    const [stackRows] = await pool.query<StackRow[]>(
-      'SELECT movie_id, position FROM room_stack WHERE room_id = ? ORDER BY position ASC',
-      [roomId],
-    );
+    const swipedIds = new Set((swiped as SwipedRow[]).map((r) => r.movie_id));
+    const unseenMovies = (stackRows as StackRow[]).filter((row) => !swipedIds.has(row.movie_id));
+
+    if (roomState.length > 0) {
+      triggerRefillIfNeeded(roomId, unseenMovies.length, (roomState as RoomStateRow[])[0]);
+    }
 
     const pageSize = 20;
-    const startIndex = (page - 1) * pageSize;
-    const unseenMovies = stackRows.filter((row) => !swipedIds.has(row.movie_id));
-    const movieSlice = unseenMovies.slice(startIndex, startIndex + pageSize);
+    const movieSlice = unseenMovies.filter((row) => row.position > afterPosition).slice(0, pageSize);
+    const lastPosition = movieSlice.length > 0 ? movieSlice[movieSlice.length - 1]!.position : afterPosition;
 
     if (movieSlice.length === 0) {
-      res.json({ page, movies: [] });
+      res.json({ movies: [], lastPosition: afterPosition });
       return;
     }
 
@@ -142,7 +181,7 @@ router.get('/feed', authMiddleware, async (req: Request, res: Response): Promise
       }),
     );
 
-    res.json({ page, movies: results });
+    res.json({ movies: results, lastPosition });
   } catch (err) {
     logger.error({ err, userId, roomId }, 'Movie feed error');
     res.status(500).json({ error: 'Interner Serverfehler' });

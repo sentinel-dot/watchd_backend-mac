@@ -8,6 +8,7 @@ import { config } from '../config';
 import { logger } from '../logger';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sendPasswordResetEmail } from '../services/mail';
+import { disconnectUserSockets } from '../socket';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 const router = Router();
@@ -268,6 +269,7 @@ router.delete('/delete-account', authMiddleware, async (req: Request, res: Respo
       await conn.query('UPDATE password_reset_tokens SET used = TRUE WHERE user_id = ?', [userId]);
       await conn.query('DELETE FROM users WHERE id = ?', [userId]);
       await conn.commit();
+      disconnectUserSockets(userId);
       logger.info({ userId }, 'User account deleted (DSGVO/Apple compliance)');
       res.json({ message: 'Konto wurde vollstaendig geloescht' });
     } catch (txErr) {

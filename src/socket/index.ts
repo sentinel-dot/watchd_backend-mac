@@ -54,6 +54,7 @@ export function initSocket(httpServer: HttpServer, corsOrigins: string | string[
 
         const roomChannel = `room:${roomId}`;
         socket.join(roomChannel);
+        socket.join(`user:${user.userId}`);
         socket.emit(SocketEvents.JOINED, { roomId });
         logger.info({ userId: user.userId, roomId }, 'User joined room via socket');
       } catch (err) {
@@ -74,4 +75,14 @@ export function initSocket(httpServer: HttpServer, corsOrigins: string | string[
 export function getIo(): SocketServer {
   if (!io) throw new Error('Socket.io not initialized');
   return io;
+}
+
+/**
+ * Force-closes all active Socket.io connections belonging to a user.
+ * Called after account deletion so orphaned sockets don't outlive the DB record.
+ */
+export function disconnectUserSockets(userId: number): void {
+  if (!io) return;
+  io.in(`user:${userId}`).disconnectSockets(true);
+  logger.info({ userId }, 'Disconnected all sockets for deleted user');
 }
