@@ -126,6 +126,7 @@ router.post('/join', authMiddleware, async (req: Request, res: Response): Promis
           userId,
         ]);
         await pool.query('UPDATE rooms SET status = ?, last_activity_at = NOW() WHERE id = ?', ['active', room.id]);
+        room.status = 'active';
 
         const io = getIo();
         io.to(`room:${room.id}`).emit(SocketEvents.PARTNER_JOINED, { userId });
@@ -153,6 +154,7 @@ router.post('/join', authMiddleware, async (req: Request, res: Response): Promis
 
     const newStatus = countRows[0].count === 1 ? 'active' : 'waiting';
     await pool.query('UPDATE rooms SET status = ?, last_activity_at = NOW() WHERE id = ?', [newStatus, room.id]);
+    room.status = newStatus;
 
     const io = getIo();
     io.to(`room:${room.id}`).emit(SocketEvents.PARTNER_JOINED, { userId });

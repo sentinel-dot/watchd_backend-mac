@@ -32,6 +32,7 @@ export const config = {
     from: process.env['SMTP_FROM'] ?? 'noreply@watchd.app',
   },
   appUrl: process.env['APP_URL'] ?? 'https://watchd.app',
+  bcryptRounds: parseInt(process.env['BCRYPT_ROUNDS'] ?? '12', 10),
   apns: {
     keyId: process.env['APNS_KEY_ID'] ?? '',
     teamId: process.env['APNS_TEAM_ID'] ?? '',

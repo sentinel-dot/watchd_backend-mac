@@ -31,7 +31,7 @@ const STREAMING_SERVICE_IDS: Record<string, number> = {
 
 const PAGES_PER_BATCH = 5;
 
-function buildTmdbUrl(page: number, filters: RoomFilters): { url: string; headers: Record<string, string> } {
+export function buildTmdbUrl(page: number, filters: RoomFilters): { url: string; headers: Record<string, string> } {
   const url = new URL('https://api.themoviedb.org/3/discover/movie');
   url.searchParams.set('language', 'de');
   url.searchParams.set('sort_by', 'popularity.desc');

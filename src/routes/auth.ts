@@ -53,7 +53,7 @@ async function createRefreshToken(userId: number, familyId?: string): Promise<st
   return Buffer.from(JSON.stringify({ uid: userId, tok: raw, fam: family })).toString('base64url');
 }
 
-function decodeRefreshToken(encoded: string): { uid: number; tok: string; fam: string } | null {
+export function decodeRefreshToken(encoded: string): { uid: number; tok: string; fam: string } | null {
   try {
     return JSON.parse(Buffer.from(encoded, 'base64url').toString('utf-8'));
   } catch {
@@ -94,7 +94,7 @@ router.post('/register', [
   try {
     const [existing] = await pool.query<UserRow[]>('SELECT id FROM users WHERE email = ?', [email]);
     if (existing.length > 0) { res.status(409).json({ error: 'Diese E-Mail ist bereits registriert' }); return; }
-    const passwordHash = await bcrypt.hash(password, 12);
+    const passwordHash = await bcrypt.hash(password, config.bcryptRounds);
     const [result] = await pool.query<ResultSetHeader>(
       'INSERT INTO users (name, email, password_hash, is_guest) VALUES (?, ?, ?, ?)',
       [name, email, passwordHash, false],
@@ -187,7 +187,7 @@ router.post('/upgrade', authMiddleware, [
     if (users.length === 0 || !users[0].is_guest) { res.status(400).json({ error: 'Nur Gast-Konten koennen aufgewertet werden' }); return; }
     const [existing] = await pool.query<UserRow[]>('SELECT id FROM users WHERE email = ?', [email]);
     if (existing.length > 0) { res.status(409).json({ error: 'Diese E-Mail ist bereits registriert' }); return; }
-    const passwordHash = await bcrypt.hash(password, 12);
+    const passwordHash = await bcrypt.hash(password, config.bcryptRounds);
     await pool.query('UPDATE users SET email = ?, password_hash = ?, is_guest = ? WHERE id = ?', [email, passwordHash, false, userId]);
     const [updated] = await pool.query<UserRow[]>('SELECT id, name, email, is_guest FROM users WHERE id = ?', [userId]);
     const response = await issueTokenPair(updated[0]);
@@ -233,7 +233,7 @@ router.post('/reset-password', [
     const [tokens] = await pool.query<ResetTokenRow[]>('SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token_hash = ?', [tokenHash]);
     if (tokens.length === 0 || tokens[0].used || new Date() > tokens[0].expires_at) { res.status(400).json({ error: 'Ungueltiger oder abgelaufener Token' }); return; }
     const resetToken = tokens[0];
-    const passwordHash = await bcrypt.hash(newPassword, 12);
+    const passwordHash = await bcrypt.hash(newPassword, config.bcryptRounds);
     await pool.query('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, resetToken.user_id]);
     await pool.query('UPDATE password_reset_tokens SET used = ? WHERE id = ?', [true, resetToken.id]);
     await pool.query('UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = ?', [resetToken.user_id]);
