@@ -405,7 +405,7 @@ Xcode-Pflicht: Push Notifications Capability via Signing & Capabilities → erze
 
 | Status | Thema |
 |--------|-------|
-| **offen** | CI: GitHub Actions mit MySQL-8-Service-Container (`mysqladmin ping` healthcheck), Env aus `.env.test`, `npm test` sequentiell im Single-Worker (siehe `vitest.config.ts`) |
+| **erledigt** | CI: GitHub Actions mit MySQL-8-Service-Container (`.github/workflows/test.yml`), Typecheck + Tests auf jedem PR; Branch-Protection auf `main` blockiert direkte Pushes (siehe `CONTRIBUTING.md`) |
 | **post-MVP** | Room-Namen editieren in UI (Route existiert, UI fehlt) |
 | **post-MVP** | Pino-Logs strukturiert in Datei / Logdienst (aktuell nur stdout) |
 | **post-MVP** | App Store Assets (Screenshots, App-Icon alle Größen) |
