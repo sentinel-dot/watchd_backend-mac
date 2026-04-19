@@ -8,7 +8,44 @@ Dieses Dokument beschreibt den Arbeitsablauf für Änderungen an diesem Repo. Zi
 
 ## Golden Rule
 
-**Nie direkt auf `main` pushen.** Jede Änderung geht über einen Feature-Branch + Pull Request. GitHub ist so konfiguriert, dass es Direct-Pushes ablehnt. Railway deployt ausschließlich `main` — sobald etwas dort landet, geht es live.
+**Code-Änderungen gehen immer über einen Pull Request.** Kein direkter Push auf `main` für alles was Runtime-Verhalten berühren kann: Code in `src/`, Tests, Config (`package.json`, `tsconfig.json`, Schema, `.env.example`). GitHub lehnt Direct-Pushes standardmäßig ab. Railway deployt ausschließlich `main` — sobald etwas dort landet, geht es live.
+
+**Ausnahme — direkter Push auf `main` erlaubt für:**
+- Reine Doku-Änderungen in `.md`-Dateien (Typo, CLAUDE.md-Statusupdate, README-Fix)
+- Kommentare in Source-Files, die keine Code-Logik ändern
+- Prod-Notfall, wenn der PR-Zyklus zu langsam ist
+
+Technisch: du bist als Repo-Admin in der Bypass-Liste der Ruleset-Regel eingetragen (siehe Sektion [Direct-Push: Bypass](#direct-push-bypass) unten). `git push origin main` funktioniert, _wenn_ du es bewusst willst. Selbstdisziplin bestimmt den Rest.
+
+---
+
+## Cheat Sheet
+
+**Normaler PR-Flow** (für alle Code-Änderungen):
+
+```bash
+cd watchd_backend-mac
+git checkout main && git pull
+git checkout -b fix/kurze-beschreibung
+# ... arbeiten + lokal: npm run typecheck && npm test
+git add <files>
+git commit -m "fix: was sich ändert"
+git push -u origin fix/kurze-beschreibung
+# → auf GitHub PR öffnen, warten auf grünes CI, "Squash and merge"
+git checkout main && git pull && git branch -d fix/kurze-beschreibung
+```
+
+**Direct-Push auf `main`** (nur für Doku-Änderungen oder Hotfix):
+
+```bash
+cd watchd_backend-mac
+git add <.md-dateien>
+git commit -m "docs: kurze beschreibung"
+git push origin main
+# → Railway deployt automatisch; CI läuft nachgelagert auf main als Sanity-Check
+```
+
+Siehe [Arbeitsablauf — Schritt für Schritt](#arbeitsablauf--schritt-für-schritt) unten für die ausführliche Erklärung jedes Schritts, und [Direct-Push: Bypass](#direct-push-bypass) für die Spielregeln und Einrichtung.
 
 ---
 
@@ -166,15 +203,39 @@ Wenn CI rot ist, zeigt GitHub dir im PR welcher Step fehlgeschlagen ist + den Lo
 
 ---
 
-## Notfall: direkt auf `main` pushen
+## Direct-Push: Bypass
 
-Wenn Prod brennt und kein Review-Zyklus drin ist, kannst du als Repo-Admin die Branch-Protection umgehen:
+Als Repo-Admin bist du in der **Bypass-Liste** der Ruleset-Regel auf `main`. Damit funktioniert `git push origin main` — die Regel blockiert nur Nicht-Admins und dich selbst, wenn du den PR-Flow bewusst nutzt.
 
-1. GitHub → Repo → Settings → Branches → Branch-Protection-Rule für `main`
-2. Temporär „Require pull request before merging" deaktivieren, oder
-3. `git push origin main --force-with-lease` (erfordert aktuelle Rule-Einstellung, die Admin-Push erlaubt)
+### Einrichtung (einmalig)
 
-**Regel:** Danach direkt wieder einschalten. Direct-Push auf `main` sollte die absolute Ausnahme sein, nicht zum Standard werden — sonst ist der ganze Workflow nutzlos.
+1. GitHub → Repo → **Settings** → **Rules** → **Rulesets** → deine Ruleset auswählen
+2. Sektion **Bypass list** → **„Add bypass"**
+3. „Repository admin role" auswählen (oder explizit dich als User)
+4. **Bypass mode**: `Always` (du kannst jederzeit bypassen; Alternative `Pull requests only` erlaubt Bypass nur in PRs)
+5. **Save**
+
+### Wann direct-pushen
+
+**Erlaubt:**
+- `.md`-Dateien (README, CLAUDE.md, CONTRIBUTING.md, docs/, etc.)
+- Pure Kommentar-Änderungen in Source-Code
+- Prod-Notfall mit Zeitdruck
+
+**Nicht erlaubt** (auch wenn technisch möglich):
+- Änderungen in `src/`, die Code-Logik berühren
+- Test-Änderungen
+- Dependency-Updates (`package.json`, `package-lock.json`)
+- Schema- oder Migration-Änderungen
+- Config-Dateien (`tsconfig.json`, `vitest.config.ts`, `.env.example`)
+
+### Was nach einem Notfall-Bypass zu tun ist
+
+Nach einem Hotfix-Direct-Push auf `main` **trotzdem** im Nachgang:
+- CI lokal reproduzieren (`npm run typecheck && npm test`) — falls du im Notfall CI übersprungen hast
+- Wenn das Problem ein grundsätzlicher Code-Fehler war: Follow-up-PR mit Test erstellen, damit derselbe Fehler nicht wiederkommt
+
+**Regel:** Direct-Push ist ein Werkzeug, keine Abkürzung. Wenn du merkst, dass du `git push origin main` häufiger nutzt als den PR-Flow für Code-Änderungen, ist deine Disziplin weg und der ganze Workflow nutzlos.
 
 ---
 
