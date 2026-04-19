@@ -228,6 +228,48 @@ base64 -i AuthKey_XXXXXXXXXX.p8 | tr -d '\n'
 
 ---
 
+## Deployment (Railway)
+
+- **Produktiv-URL**: `https://watchd.up.railway.app`
+- **Auto-Deploy**: jeder Push auf `main` triggert einen Railway-Build. Keine CLI, kein Docker — Nixpacks erkennt Node automatisch
+- **Build**: `npm run build` → `npm start` (aus `package.json` scripts)
+
+### Env-Vars-Workflow
+
+Source of Truth sind die Railway-Variables. Workflow:
+
+1. Änderung zuerst in Railway Dashboard → Variables setzen (triggert automatisch Redeploy)
+2. Lokale `.env` per Hand synchron halten (copy-paste der geänderten Werte), damit Dev-Build mit gleicher Config läuft
+3. `.env` ist in `.gitignore` — kommt nie ins Repo; `.env.example` listet alle unterstützten Keys mit Defaults
+
+### Logs
+
+- **Live-Logs**: Railway Dashboard → Deployments → aktuelles Deployment → Logs-Tab
+- **Pino-Logs**: im Prod werden strukturierte JSON-Logs ausgegeben (in Dev: `pino-pretty`). Railway rendert sie als Plain-Text
+- **Health-Check** (extern, ohne Logs): `curl https://watchd.up.railway.app/health` → `{status, db, tmdb, uptime}`
+
+### Rollback
+
+**Nicht** via `git revert` — das ist langsam (neuer Build) und kann selbst fehlschlagen.
+
+Stattdessen: **Railway Dashboard → Deployments → vorherigen grünen Deploy auswählen → "Redeploy"**. Railway nutzt den bereits gebauten Container, Downtime ~30 s. Danach in Ruhe den problematischen Commit analysieren und regulär fixen.
+
+### Redeploy ohne Code-Änderung
+
+Wenn nur Env-Vars oder externe Abhängigkeiten (TMDB-Key rotiert, APNs-Key neu) das Problem sind: Railway Dashboard → Deployments → aktuellen Deploy → "Redeploy". Kein Commit nötig.
+
+### Deploy-Troubleshooting
+
+| Symptom | Wahrscheinliche Ursache |
+|---------|------------------------|
+| Deploy failed beim Build-Step | TypeScript-Fehler — lokal `npm run typecheck` laufen lassen, fixen, erneut pushen |
+| Deploy grün, aber `/health` meldet `db: error` | `DB_*` Env-Vars auf Railway falsch oder DB-Service nicht erreichbar |
+| Deploy grün, aber `/health` meldet `tmdb: error` | `TMDB_API_KEY` oder `TMDB_READ_ACCESS_TOKEN` fehlt/falsch |
+| Match-Push kommt nicht an (App zeigt Match, aber keine Notification) | `APNS_PRODUCTION` passt nicht zum Key-Typ. Sandbox-Key braucht `false`, Production-Key `true`. **Keine Fehlermeldung auf beiden Seiten** — lautlos |
+| Password-Reset-Mail kommt nicht an | `SMTP_HOST` leer → Mail wird nur auf Console geloggt. Railway-Logs prüfen, dann SMTP-Vars setzen |
+
+---
+
 ## API-Routen
 
 | Method | Path | Beschreibung |
