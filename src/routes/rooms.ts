@@ -109,7 +109,7 @@ router.post('/join', authMiddleware, async (req: Request, res: Response): Promis
     const room = rooms[0];
 
     if (room.status === 'dissolved') {
-      res.status(410).json({ error: 'Room wurde aufgeloest' });
+      res.status(410).json({ error: 'Dieser Raum existiert nicht mehr' });
       return;
     }
 
@@ -219,7 +219,9 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
       `SELECT r.id, r.code, r.created_by, r.created_at, r.status, r.name, r.filters, r.last_activity_at
        FROM rooms r
        JOIN room_members rm ON rm.room_id = r.id
-       WHERE rm.user_id = ? AND rm.deleted_from_archive_at IS NULL
+       WHERE rm.user_id = ?
+         AND rm.is_active = true
+         AND rm.deleted_from_archive_at IS NULL
        ORDER BY r.last_activity_at DESC`,
       [userId],
     );

@@ -216,6 +216,24 @@ describe('GET /api/rooms', () => {
     expect(res.body.rooms[0].id).toBe(aliceRoom.id);
   });
 
+  it('excludes rooms the user has left while partner stays', async () => {
+    const alice = await createUser(agent, { email: 'a-left@example.com' });
+    const bob = await createUser(agent, { email: 'b-left@example.com' });
+    const room = await createRoom(agent, alice.accessToken, { name: 'Shared' });
+    await joinRoom(agent, bob.accessToken, room.code);
+
+    await agent
+      .delete(`/api/rooms/${room.id}/leave`)
+      .set('Authorization', `Bearer ${alice.accessToken}`);
+
+    const aliceList = await agent.get('/api/rooms').set('Authorization', `Bearer ${alice.accessToken}`);
+    expect(aliceList.body.rooms).toHaveLength(0);
+
+    const bobList = await agent.get('/api/rooms').set('Authorization', `Bearer ${bob.accessToken}`);
+    expect(bobList.body.rooms).toHaveLength(1);
+    expect(bobList.body.rooms[0].id).toBe(room.id);
+  });
+
   it('returns 401 without auth', async () => {
     const res = await agent.get('/api/rooms');
     expect(res.status).toBe(401);

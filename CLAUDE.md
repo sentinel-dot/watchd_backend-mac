@@ -319,6 +319,7 @@ Wenn nur Env-Vars oder externe Abhängigkeiten (TMDB-Key rotiert, APNs-Key neu) 
 - `active` → `waiting` (ein Member verlässt)
 - `waiting`/`active` → `dissolved` (letzter Member verlässt nach Nutzung)
 - Nie genutzte Rooms werden sofort hard-deleted
+- `GET /api/rooms` filtert nach `room_members.is_active = true` — wer verlassen hat, sieht den Raum nicht mehr in der aktiven Liste (taucht erst im Archiv auf, wenn er dissolved ist)
 
 **JWT-Strategie:**
 Short-lived Access-Tokens + Refresh-Token-Rotation. Wiederverwendung eines revoked Tokens innerhalb derselben `family_id` invalidiert die gesamte Familie (theft detection).
