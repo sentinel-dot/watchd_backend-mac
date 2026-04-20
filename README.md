@@ -103,5 +103,6 @@ Nützlich nach Deploys, um DB- und TMDB-Konnektivität zu prüfen.
 ## Weitere Docs
 
 - [CLAUDE.md](./CLAUDE.md) — Architektur, Routen, Services, Test-Setup, Code-Standards, bekannte Fallen
+- [docs/troubleshooting.md](./docs/troubleshooting.md) — Incident-Playbook für Laufzeitfehler und Runtime-Debugging
 - [`.env.example`](./.env.example) — alle unterstützten Env-Vars mit Defaults und Kommentaren
 - [`src/db/schema.sql`](./src/db/schema.sql) — komplettes DB-Schema (9 Tabellen)

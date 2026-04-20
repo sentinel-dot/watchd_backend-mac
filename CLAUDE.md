@@ -148,6 +148,9 @@ Views/                         # alle SwiftUI-Screens (Xcode 16 erfasst neue Dat
 ├── LegalView.swift            # Datenschutz / Impressum / AGB
 ├── NativeTextField.swift      # UIViewRepresentable Wrapper für bessere Keyboard-Handles
 └── SharedComponents.swift     # Wiederverwendbare UI-Bausteine (Buttons, Loader, Empty-States)
+
+watchd_backend-mac/docs/
+└── troubleshooting.md    # Runtime-Incident-Playbook (Socket, Push, room_stack, etc.)
 ```
 
 ---
@@ -272,6 +275,8 @@ Wenn nur Env-Vars oder externe Abhängigkeiten (TMDB-Key rotiert, APNs-Key neu) 
 | Deploy grün, aber `/health` meldet `tmdb: error` | `TMDB_API_KEY` oder `TMDB_READ_ACCESS_TOKEN` fehlt/falsch |
 | Match-Push kommt nicht an (App zeigt Match, aber keine Notification) | `APNS_PRODUCTION` passt nicht zum Key-Typ. Sandbox-Key braucht `false`, Production-Key `true`. **Keine Fehlermeldung auf beiden Seiten** — lautlos |
 | Password-Reset-Mail kommt nicht an | `SMTP_HOST` leer → Mail wird nur auf Console geloggt. Railway-Logs prüfen, dann SMTP-Vars setzen |
+
+Für Runtime-/Codepfad-Incidents siehe `docs/troubleshooting.md`.
 
 ---
 

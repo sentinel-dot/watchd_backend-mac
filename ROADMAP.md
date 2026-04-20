@@ -18,24 +18,12 @@ Prioritisierte Follow-up-Liste aus dem Infra-Gap-Report vom 2026-04-19. Fokus: w
 - `.env.example` vollstaendig (inkl. `BCRYPT_ROUNDS`)
 - `actions/checkout` und `actions/setup-node` auf v5 (Node-24-Runtime)
 - Node-22-Upgrade abgeschlossen (2026-04-20) - `.nvmrc`, `engines.node >=22`, `@types/node ^22`, CI auf Node 22
+- Lazy-Refill-Trigger in Movie-Routes getestet (2026-04-20) - `movies.integration.test.ts` deckt `<=10` unseen, `stack_exhausted` und atomaren Lock bei Parallel-Requests ab
+- Operational-Troubleshooting-Playbook angelegt (2026-04-20) - `docs/troubleshooting.md` als Incident-Startpunkt fuer Runtime-Probleme
 
 ---
 
 ## P1 - Hoch
-
-### Test-Coverage: Refill-Trigger in Movie-Routes
-**Warum:** `appendRoomStack()` selbst ist inzwischen per Integrationstest abgedeckt (`src/tests/integration/room-stack-append.integration.test.ts`), aber die Route-seitige Trigger-Logik in `src/routes/movies.ts` ist noch nicht gezielt getestet. Genau dort entscheidet sich, ob der Lazy-Refill im laufenden Betrieb ueberhaupt zuverlaessig anspringt oder korrekt blockiert wird.
-**Effort:** ~45-75 min
-**Was konkret:** Integration-Tests fuer `GET /api/movies/feed` und/oder `GET /api/movies/rooms/:roomId/next-movie`:
-- bei <= 10 ungeswipten Filmen wird Refill angestossen
-- bei `stack_exhausted = true` wird kein Refill getriggert
-- bei Lock-Konflikt / parallelen Requests startet nur ein Request den Refill
-- optional: sicherstellen, dass der Request selbst normal antwortet, waehrend Refill im Hintergrund laeuft
-
-### Operational Troubleshooting
-**Warum:** Deploy-Troubleshooting ist in CLAUDE.md dokumentiert, Code-Laufzeit-Fehler nicht ("Socket disconnectet staendig", "Match-Push doppelt", "room_stack bleibt leer trotz aktivem User"). Beim ersten Incident fehlt das Playbook.
-**Effort:** ~30 min Skelett, Qualitaet waechst nach realen Incidents
-**Was konkret:** Neue Sektion in `CLAUDE.md` oder `docs/troubleshooting.md` mit Format: Symptom -> Diagnose-Schritt -> haeufigste Ursache. Leere Eintraege sind OK - Platzhalter, die nach Incidents gefuellt werden.
 
 ---
 
