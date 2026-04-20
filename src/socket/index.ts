@@ -1,12 +1,13 @@
-import { Server as HttpServer } from 'http';
-import { Server as SocketServer, Socket } from 'socket.io';
+import type { Server as HttpServer } from 'http';
+import type { Socket } from 'socket.io';
+import { Server as SocketServer } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { logger } from '../logger';
 import { pool } from '../db/connection';
-import { AuthPayload } from '../middleware/auth';
+import type { AuthPayload } from '../middleware/auth';
 import { SocketEvents } from './events';
-import { RowDataPacket } from 'mysql2';
+import type { RowDataPacket } from 'mysql2';
 
 let io: SocketServer;
 
@@ -53,8 +54,8 @@ export function initSocket(httpServer: HttpServer, corsOrigins: string | string[
         }
 
         const roomChannel = `room:${roomId}`;
-        socket.join(roomChannel);
-        socket.join(`user:${user.userId}`);
+        void socket.join(roomChannel);
+        void socket.join(`user:${user.userId}`);
         socket.emit(SocketEvents.JOINED, { roomId });
         logger.info({ userId: user.userId, roomId }, 'User joined room via socket');
       } catch (err) {

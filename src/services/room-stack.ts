@@ -1,7 +1,7 @@
 import { pool } from '../db/connection';
 import { config } from '../config';
 import { logger } from '../logger';
-import { ResultSetHeader, RowDataPacket } from 'mysql2';
+import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 
 interface RoomFilters {
   genres?: number[];
@@ -31,7 +31,10 @@ const STREAMING_SERVICE_IDS: Record<string, number> = {
 
 const PAGES_PER_BATCH = 5;
 
-export function buildTmdbUrl(page: number, filters: RoomFilters): { url: string; headers: Record<string, string> } {
+export function buildTmdbUrl(
+  page: number,
+  filters: RoomFilters,
+): { url: string; headers: Record<string, string> } {
   const url = new URL('https://api.themoviedb.org/3/discover/movie');
   url.searchParams.set('language', 'de');
   url.searchParams.set('sort_by', 'popularity.desc');
@@ -121,7 +124,9 @@ export async function generateRoomStack(roomId: number, filters: RoomFilters): P
     }
 
     const values = movieIds.map((movieId, index) => [roomId, movieId, index]);
-    await pool.query('INSERT IGNORE INTO room_stack (room_id, movie_id, position) VALUES ?', [values]);
+    await pool.query('INSERT IGNORE INTO room_stack (room_id, movie_id, position) VALUES ?', [
+      values,
+    ]);
 
     await pool.query(
       'UPDATE rooms SET stack_next_page = ?, stack_generating = 0, stack_exhausted = 0 WHERE id = ?',
@@ -150,15 +155,16 @@ export async function appendRoomStack(roomId: number): Promise<void> {
     }
 
     const startPage = roomRows[0].stack_next_page;
-    const filters: RoomFilters = roomRows[0].filters ? (JSON.parse(roomRows[0].filters) as RoomFilters) : {};
+    const filters: RoomFilters = roomRows[0].filters
+      ? (JSON.parse(roomRows[0].filters) as RoomFilters)
+      : {};
 
     const { movieIds } = await fetchTmdbPages(startPage, PAGES_PER_BATCH, filters);
 
     if (movieIds.length === 0) {
-      await pool.query(
-        'UPDATE rooms SET stack_generating = 0, stack_exhausted = 1 WHERE id = ?',
-        [roomId],
-      );
+      await pool.query('UPDATE rooms SET stack_generating = 0, stack_exhausted = 1 WHERE id = ?', [
+        roomId,
+      ]);
       completed = true;
       logger.info({ roomId, startPage }, 'Room stack exhausted — no more TMDB pages');
       return;
@@ -191,7 +197,9 @@ export async function appendRoomStack(roomId: number): Promise<void> {
     logger.error({ err, roomId }, 'Error appending room stack');
   } finally {
     if (!completed) {
-      await pool.query('UPDATE rooms SET stack_generating = 0 WHERE id = ?', [roomId]).catch(() => {});
+      await pool
+        .query('UPDATE rooms SET stack_generating = 0 WHERE id = ?', [roomId])
+        .catch(() => {});
     }
   }
 }

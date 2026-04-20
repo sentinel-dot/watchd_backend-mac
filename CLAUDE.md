@@ -9,6 +9,7 @@ Tinder-style Movie-Matching-App: zwei User swipen in einem gemeinsamen "Room" au
 ## Tech Layers
 
 ### Backend (`watchd_backend-mac/`)
+
 - **Framework**: Express + Socket.io
 - **Sprache**: TypeScript (Node.js 22 via `.nvmrc`, `engines.node >=22`, CI auf Node 22)
 - **Datenbank**: MySQL (mysql2 Pool, 10 Connections, UTC timezone)
@@ -16,10 +17,12 @@ Tinder-style Movie-Matching-App: zwei User swipen in einem gemeinsamen "Room" au
 - **Push**: APNs via `@parse/node-apn` (lazy-initialized beim ersten Aufruf)
 - **Mail**: Nodemailer; SMTP oder Console-Fallback wenn `SMTP_HOST` leer
 - **Cache**: LRU (2000 Einträge, 1h TTL) für TMDB; 1h pro `movieId` für JustWatch
+- **Code-Quality**: ESLint (Flat Config + `typescript-eslint`) + Prettier; CI prüft `lint`, `format:check`, `typecheck`, `test`
 - **Deployment**: Railway — `https://watchd.up.railway.app` (`npm run build` → `npm start`, kein Dockerfile)
 - **Testing**: Vitest + Supertest gegen echte `watchd_test`-DB (Socket.io, APNs, Mail, TMDB, JustWatch, room-stack gemockt — `appendRoomStack` wird per `vi.importActual` in `room-stack-append.integration.test.ts` real gegen DB + gemocktes `global.fetch` getestet; `movies.integration.test.ts` sichert den Lazy-Refill-Trigger in den Movie-Routes mit gemocktem `appendRoomStack` ab: `<=10` unseen, `stack_exhausted`, atomarer Lock bei Parallel-Requests). `pool: 'threads'`, `fileParallelism: false`, `isolate: false` — single Worker teilt Module (inkl. DB-Pool + httpServer) über alle Files. `setup.ts` initialisiert Server einmalig (idempotentes `beforeAll`, kein `afterAll` — Prozess-Exit räumt auf). Mock-Factories sind **idempotent** (Instanzen in `globalThis.__watchdMocks` gecached) — sonst erzeugt jede Factory-Ausführung pro File frische `vi.fn()`s und entkoppelt sie vom einmalig erzeugten App-Instanz → flaky Socket/Mail-Spy-Tests je nach File-Reihenfolge. `createApp({ skipRateLimiter: true })` für Tests. Design: echte Test-DB statt Mock (Migrations-Parität mit Prod); nur externe / Side-effect-Module gemockt. **Nicht getestet**: `token-cleanup.ts` (scheduled, kein deterministischer Testpunkt), APNs/Mail/TMDB/JustWatch (gemockt — Unit-Tests darüber bringen keinen Mehrwert), iOS (kein MVP-ROI), E2E, echte Concurrency jenseits der abgesicherten `stack_generating`-/`INSERT IGNORE`-Pfade.
 
 ### iOS App (`watchd/`)
+
 - **Framework**: SwiftUI (iOS 16+, Xcode 16+)
 - **Architektur**: MVVM — alle ViewModels `@MainActor ObservableObject`
 - **Netzwerk**: `URLSession` actor (`APIService`), Socket.io (vendored, v16.1.1)
@@ -160,6 +163,10 @@ watchd_backend-mac/docs/
 ```bash
 # Backend
 npm run dev            # Hot-reload via ts-node-dev
+npm run lint           # ESLint für src/ + vitest.config.ts
+npm run lint:fix       # Lint-Fixes automatisch anwenden
+npm run format         # Prettier auf Repo-Dateien anwenden
+npm run format:check   # Prettier-Check ohne Änderungen
 npm run typecheck      # Type-check only (kein emit) — nach jeder Änderung ausführen
 npm run build          # Compile → dist/
 npm start              # Production
@@ -193,6 +200,7 @@ open watchd/watchd.xcodeproj   # dann ⌘R in Xcode
 Alle Vars in `src/config.ts` validiert. Start wirft Error wenn Required fehlt.
 
 **Required:**
+
 ```
 JWT_SECRET=
 JWT_REFRESH_SECRET=
@@ -204,6 +212,7 @@ DB_NAME=
 ```
 
 **Optional (mit Defaults):**
+
 ```
 PORT=3000
 NODE_ENV=development
@@ -230,6 +239,7 @@ BCRYPT_ROUNDS=12          # bcrypt cost factor (Default 12); niedriger für Test
 ```
 
 **APNS_PRIVATE_KEY encoding:**
+
 ```bash
 base64 -i AuthKey_XXXXXXXXXX.p8 | tr -d '\n'
 ```
@@ -268,13 +278,13 @@ Wenn nur Env-Vars oder externe Abhängigkeiten (TMDB-Key rotiert, APNs-Key neu) 
 
 ### Deploy-Troubleshooting
 
-| Symptom | Wahrscheinliche Ursache |
-|---------|------------------------|
-| Deploy failed beim Build-Step | TypeScript-Fehler — lokal `npm run typecheck` laufen lassen, fixen, erneut pushen |
-| Deploy grün, aber `/health` meldet `db: error` | `DB_*` Env-Vars auf Railway falsch oder DB-Service nicht erreichbar |
-| Deploy grün, aber `/health` meldet `tmdb: error` | `TMDB_API_KEY` oder `TMDB_READ_ACCESS_TOKEN` fehlt/falsch |
+| Symptom                                                              | Wahrscheinliche Ursache                                                                                                                            |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Deploy failed beim Build-Step                                        | TypeScript-Fehler — lokal `npm run typecheck` laufen lassen, fixen, erneut pushen                                                                  |
+| Deploy grün, aber `/health` meldet `db: error`                       | `DB_*` Env-Vars auf Railway falsch oder DB-Service nicht erreichbar                                                                                |
+| Deploy grün, aber `/health` meldet `tmdb: error`                     | `TMDB_API_KEY` oder `TMDB_READ_ACCESS_TOKEN` fehlt/falsch                                                                                          |
 | Match-Push kommt nicht an (App zeigt Match, aber keine Notification) | `APNS_PRODUCTION` passt nicht zum Key-Typ. Sandbox-Key braucht `false`, Production-Key `true`. **Keine Fehlermeldung auf beiden Seiten** — lautlos |
-| Password-Reset-Mail kommt nicht an | `SMTP_HOST` leer → Mail wird nur auf Console geloggt. Railway-Logs prüfen, dann SMTP-Vars setzen |
+| Password-Reset-Mail kommt nicht an                                   | `SMTP_HOST` leer → Mail wird nur auf Console geloggt. Railway-Logs prüfen, dann SMTP-Vars setzen                                                   |
 
 Für Runtime-/Codepfad-Incidents siehe `docs/troubleshooting.md`.
 
@@ -282,36 +292,36 @@ Für Runtime-/Codepfad-Incidents siehe `docs/troubleshooting.md`.
 
 ## API-Routen
 
-| Method | Path | Beschreibung |
-|--------|------|--------------|
-| `POST` | `/api/auth/register` | Vollkonto anlegen (name, email, password) |
-| `POST` | `/api/auth/login` | Email + Password Login |
-| `POST` | `/api/auth/guest` | Anonymer Guest (generierter dt. Name) |
-| `POST` | `/api/auth/refresh` | Token-Rotation (theft detection via family_id) |
-| `POST` | `/api/auth/upgrade` | Guest → Vollkonto (email + password hinzufügen) |
-| `POST` | `/api/auth/forgot-password` | Password-Reset-Mail senden |
-| `POST` | `/api/auth/reset-password` | Password mit One-Time-Token zurücksetzen |
-| `POST` | `/api/auth/logout` | Aktuellen Refresh-Token revoken |
-| `DELETE` | `/api/auth/delete-account` | Account + alle Daten löschen (GDPR/Apple) |
-| `PATCH` | `/api/users/me` | Username ändern |
-| `POST` | `/api/users/me/device-token` | APNs Device-Token registrieren |
-| `POST` | `/api/rooms` | Room erstellen (optional: name, filters) → room_stack generieren |
-| `POST` | `/api/rooms/join` | Beitreten via 6-char Code (max 2 Members) |
-| `GET` | `/api/rooms` | Aktive Rooms des Users auflisten |
-| `GET` | `/api/rooms/:id` | Room-Details + Member-Liste |
-| `PATCH` | `/api/rooms/:id` | Room umbenennen |
-| `PATCH` | `/api/rooms/:id/filters` | Filter updaten → room_stack neu generieren + `filters_updated` emittieren |
-| `DELETE` | `/api/rooms/:id/leave` | Room verlassen (hard-delete wenn nie genutzt; archivieren wenn genutzt) |
-| `DELETE` | `/api/rooms/:id/archive` | Archivierten Room hard-deleten |
-| `GET` | `/api/movies/rooms/:roomId/next-movie` | Nächster ungeswiped Film (inkl. Streaming) |
-| `GET` | `/api/movies/feed?roomId=&afterPosition=` | 20 ungeswiped Filme paginiert (inkl. Streaming); Keyset-Cursor via `afterPosition`; Response enthält `lastPosition` |
-| `POST` | `/api/swipes` | Swipe aufzeichnen (left\|right); rechts → Matchmaking + Push |
-| `GET` | `/api/matches/:roomId` | Matches paginiert (default 20, max 50) |
-| `PATCH` | `/api/matches/:matchId` | watched/unwatched togglen |
-| `POST` | `/api/matches/favorites` | Film zu Favoriten hinzufügen |
-| `DELETE` | `/api/matches/favorites/:movieId` | Favorit entfernen |
-| `GET` | `/api/matches/favorites/list` | Favoriten paginiert (default 20, max 50) |
-| `GET` | `/health` | Liveness: `{status, db: ok\|error, tmdb: ok\|error, uptime}` |
+| Method   | Path                                      | Beschreibung                                                                                                        |
+| -------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `POST`   | `/api/auth/register`                      | Vollkonto anlegen (name, email, password)                                                                           |
+| `POST`   | `/api/auth/login`                         | Email + Password Login                                                                                              |
+| `POST`   | `/api/auth/guest`                         | Anonymer Guest (generierter dt. Name)                                                                               |
+| `POST`   | `/api/auth/refresh`                       | Token-Rotation (theft detection via family_id)                                                                      |
+| `POST`   | `/api/auth/upgrade`                       | Guest → Vollkonto (email + password hinzufügen)                                                                     |
+| `POST`   | `/api/auth/forgot-password`               | Password-Reset-Mail senden                                                                                          |
+| `POST`   | `/api/auth/reset-password`                | Password mit One-Time-Token zurücksetzen                                                                            |
+| `POST`   | `/api/auth/logout`                        | Aktuellen Refresh-Token revoken                                                                                     |
+| `DELETE` | `/api/auth/delete-account`                | Account + alle Daten löschen (GDPR/Apple)                                                                           |
+| `PATCH`  | `/api/users/me`                           | Username ändern                                                                                                     |
+| `POST`   | `/api/users/me/device-token`              | APNs Device-Token registrieren                                                                                      |
+| `POST`   | `/api/rooms`                              | Room erstellen (optional: name, filters) → room_stack generieren                                                    |
+| `POST`   | `/api/rooms/join`                         | Beitreten via 6-char Code (max 2 Members)                                                                           |
+| `GET`    | `/api/rooms`                              | Aktive Rooms des Users auflisten                                                                                    |
+| `GET`    | `/api/rooms/:id`                          | Room-Details + Member-Liste                                                                                         |
+| `PATCH`  | `/api/rooms/:id`                          | Room umbenennen                                                                                                     |
+| `PATCH`  | `/api/rooms/:id/filters`                  | Filter updaten → room_stack neu generieren + `filters_updated` emittieren                                           |
+| `DELETE` | `/api/rooms/:id/leave`                    | Room verlassen (hard-delete wenn nie genutzt; archivieren wenn genutzt)                                             |
+| `DELETE` | `/api/rooms/:id/archive`                  | Archivierten Room hard-deleten                                                                                      |
+| `GET`    | `/api/movies/rooms/:roomId/next-movie`    | Nächster ungeswiped Film (inkl. Streaming)                                                                          |
+| `GET`    | `/api/movies/feed?roomId=&afterPosition=` | 20 ungeswiped Filme paginiert (inkl. Streaming); Keyset-Cursor via `afterPosition`; Response enthält `lastPosition` |
+| `POST`   | `/api/swipes`                             | Swipe aufzeichnen (left\|right); rechts → Matchmaking + Push                                                        |
+| `GET`    | `/api/matches/:roomId`                    | Matches paginiert (default 20, max 50)                                                                              |
+| `PATCH`  | `/api/matches/:matchId`                   | watched/unwatched togglen                                                                                           |
+| `POST`   | `/api/matches/favorites`                  | Film zu Favoriten hinzufügen                                                                                        |
+| `DELETE` | `/api/matches/favorites/:movieId`         | Favorit entfernen                                                                                                   |
+| `GET`    | `/api/matches/favorites/list`             | Favoriten paginiert (default 20, max 50)                                                                            |
+| `GET`    | `/health`                                 | Liveness: `{status, db: ok\|error, tmdb: ok\|error, uptime}`                                                        |
 
 ---
 
@@ -321,6 +331,7 @@ Für Runtime-/Codepfad-Incidents siehe `docs/troubleshooting.md`.
 `POST /swipes` → `matchmaking.checkAndCreateMatch()` → alle Members swiped right → `INSERT IGNORE INTO matches` (atomic, race-safe via `UNIQUE KEY unique_room_movie`) → `affectedRows=0` = anderer Request hat gewonnen → early return → Film-Details + JustWatch-Offers holen → `match` Socket.io Event an `room:<id>` → `device_token` aller Members → `sendMatchPush()` via APNs
 
 **Room-Status-Machine:**
+
 - `waiting` (1 Member) → `active` (2. Member tritt bei)
 - `active` → `waiting` (ein Member verlässt)
 - `waiting`/`active` → `dissolved` (letzter Member verlässt nach Nutzung)
@@ -334,6 +345,7 @@ Short-lived Access-Tokens + Refresh-Token-Rotation. Wiederverwendung eines revok
 `matches.ts` und `movies.ts` nutzen `mapWithConcurrency(items, 6, fn)` — parallele TMDB/JustWatch-Calls auf 6 begrenzt.
 
 **App-Flow:**
+
 ```
 App Launch → ContentView
 ├── NICHT AUTH → AuthView
@@ -365,6 +377,7 @@ Deep Links:
 
 **Push Notifications (iOS):**
 `AuthViewModel.requestPushPermissionIfNeeded()` nach Login:
+
 - `.authorized` → sofort `registerForRemoteNotifications()` (Token refresh)
 - `.notDetermined` → erst Permission-Request, dann registrieren
 
@@ -407,16 +420,16 @@ Xcode-Pflicht: Push Notifications Capability via Signing & Capabilities → erze
 - **Planung zuerst**: Vor Änderungen >~50 Zeilen kurzen Plan vorlegen und Freigabe abwarten
 - **Kein Scope-Creep**: Nur das Geforderte — keine Bonus-Refactors, keine ungefragten Kommentare, keine Verbesserungen am umliegenden Code
 - **Sub-Agents**: Nur für breite Codebase-Exploration (`Explore`-Agent) oder Architektur-Planung (`Plan`-Agent) — für normale Tasks inline arbeiten
-- **Definition of Done**: typecheck grün (Backend) + CLAUDE.md aktualisiert + kein neuer Scope eingeschlichen
+- **Definition of Done**: lint + format:check + typecheck grün (Backend) + CLAUDE.md aktualisiert + kein neuer Scope eingeschlichen
 - **Dokumentationspflicht**: CLAUDE.md wird nach jeder Änderung automatisch aktualisiert — ohne explizite Aufforderung. Vor jeder Planung Status-Einträge aktiv gegen den Code verifizieren, nie blind der Doku vertrauen.
 
 ---
 
 ## Offene Punkte
 
-| Status | Thema |
-|--------|-------|
+| Status       | Thema                                                                                                                                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **erledigt** | CI: GitHub Actions mit MySQL-8-Service-Container (`.github/workflows/test.yml`), Typecheck + Tests auf jedem PR; Branch-Protection auf `main` blockiert direkte Pushes (siehe `CONTRIBUTING.md`) |
-| **post-MVP** | Room-Namen editieren in UI (Route existiert, UI fehlt) |
-| **post-MVP** | Pino-Logs strukturiert in Datei / Logdienst (aktuell nur stdout) |
-| **post-MVP** | App Store Assets (Screenshots, App-Icon alle Größen) |
+| **post-MVP** | Room-Namen editieren in UI (Route existiert, UI fehlt)                                                                                                                                           |
+| **post-MVP** | Pino-Logs strukturiert in Datei / Logdienst (aktuell nur stdout)                                                                                                                                 |
+| **post-MVP** | App Store Assets (Screenshots, App-Icon alle Größen)                                                                                                                                             |

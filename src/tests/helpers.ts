@@ -1,4 +1,5 @@
-import supertest from 'supertest';
+import type supertest from 'supertest';
+import type { ResultSetHeader } from 'mysql2';
 import { pool } from '../db/connection';
 
 type Agent = ReturnType<typeof supertest>;
@@ -57,10 +58,7 @@ export async function createRoom(
   token: string,
   body: { name?: string; filters?: object } = {},
 ): Promise<{ id: number; code: string }> {
-  const res = await agent
-    .post('/api/rooms')
-    .set('Authorization', `Bearer ${token}`)
-    .send(body);
+  const res = await agent.post('/api/rooms').set('Authorization', `Bearer ${token}`).send(body);
   if (res.status !== 201) {
     throw new Error(`createRoom failed: ${res.status} ${JSON.stringify(res.body)}`);
   }
@@ -82,11 +80,16 @@ export async function joinRoom(
   return { id: res.body.room.id, code: res.body.room.code };
 }
 
-export async function seedStackMovie(roomId: number, movieId: number, position: number): Promise<void> {
-  await pool.query(
-    'INSERT INTO room_stack (room_id, movie_id, position) VALUES (?, ?, ?)',
-    [roomId, movieId, position],
-  );
+export async function seedStackMovie(
+  roomId: number,
+  movieId: number,
+  position: number,
+): Promise<void> {
+  await pool.query('INSERT INTO room_stack (room_id, movie_id, position) VALUES (?, ?, ?)', [
+    roomId,
+    movieId,
+    position,
+  ]);
 }
 
 export async function seedSwipe(
@@ -102,7 +105,7 @@ export async function seedSwipe(
 }
 
 export async function seedMatch(roomId: number, movieId: number): Promise<number> {
-  const [result] = await pool.query<import('mysql2').ResultSetHeader>(
+  const [result] = await pool.query<ResultSetHeader>(
     'INSERT INTO matches (room_id, movie_id) VALUES (?, ?)',
     [roomId, movieId],
   );

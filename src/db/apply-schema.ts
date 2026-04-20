@@ -19,7 +19,9 @@ export async function applyDevSchemaIfEnabled(): Promise<void> {
 
   const schemaPath = path.join(__dirname, 'schema.sql');
   if (!fs.existsSync(schemaPath)) {
-    throw new Error(`schema.sql not found at ${schemaPath} (run npm run build to copy it into dist/db/)`);
+    throw new Error(
+      `schema.sql not found at ${schemaPath} (run npm run build to copy it into dist/db/)`,
+    );
   }
 
   const sql = fs.readFileSync(schemaPath, 'utf8');

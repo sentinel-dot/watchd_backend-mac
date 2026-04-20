@@ -33,12 +33,14 @@ Vor tieferem Debugging immer zuerst:
 ### Socket disconnectet staendig
 
 **Diagnose-Schritte**
+
 - Railway-Logs auf wiederkehrende Server-Errors, Restarts oder ungefangene Promise-Rejections pruefen
 - verifizieren, dass Client und Backend dieselbe Base-URL / dasselbe Environment nutzen
 - pruefen, ob `JOIN_ROOM` fehlschlaegt, weil Room-Mitgliedschaft in `room_members` fehlt oder `is_active = 0` ist
 - gegenchecken, ob CORS / Origin-Konfiguration kuerzlich geaendert wurde
 
 **Haeufigste Ursachen**
+
 - Client zeigt auf falsches Backend oder falsches Environment
 - User ist kein aktives Room-Mitglied mehr
 - Server wurde redeployed / restarted und die Verbindung baut in Schleife neu auf
@@ -47,12 +49,14 @@ Vor tieferem Debugging immer zuerst:
 ### Match-Push doppelt
 
 **Diagnose-Schritte**
+
 - Logs fuer denselben `room_id` + `movie_id` korrelieren: wurde ein Match einmal oder mehrfach erzeugt
 - in `matches` pruefen, ob es nur einen Datensatz fuer die Kombination gibt
 - kontrollieren, ob mehrere Device-Tokens fuer denselben User registriert sind
 - pruefen, ob der Client dieselbe Push-Nachricht lokal doppelt verarbeitet oder parallel noch ein Socket-Event rendert
 
 **Haeufigste Ursachen**
+
 - nicht zwei Matches, sondern ein Match plus doppelte Darstellung im Client
 - alte / doppelte Device-Tokens beim selben User
 - Retry-Verhalten ausserhalb der DB-Match-Erzeugung fuehrt zu doppeltem Push-Versand
@@ -60,6 +64,7 @@ Vor tieferem Debugging immer zuerst:
 ### `room_stack` bleibt leer trotz aktivem User
 
 **Diagnose-Schritte**
+
 - `rooms`-Zeile pruefen: `stack_generating`, `stack_exhausted`, `stack_next_page`, `filters`
 - Logs rund um `generateRoomStack` / `appendRoomStack` pruefen
 - verifizieren, ob TMDB fuer die gesetzten Filter ueberhaupt Ergebnisse liefert
@@ -67,6 +72,7 @@ Vor tieferem Debugging immer zuerst:
 - in `room_stack` und `swipes` gegenchecken, ob der Stack wirklich leer ist oder nur fuer den User nichts Unseen mehr uebrig ist
 
 **Haeufigste Ursachen**
+
 - Filter sind zu eng, TMDB liefert keine weiteren Titel
 - `stack_exhausted = 1` blockiert weitere Refills
 - frueherer Fehler hat Refill verhindert; Logs zeigen den ersten Ausloeser

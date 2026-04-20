@@ -39,7 +39,8 @@ describe('PATCH /api/matches/:matchId', () => {
     expect(setTrue.body.watched).toBe(true);
 
     const [rows] = await pool.query<(RowDataPacket & { watched: number })[]>(
-      'SELECT watched FROM matches WHERE id = ?', [matchId],
+      'SELECT watched FROM matches WHERE id = ?',
+      [matchId],
     );
     expect(rows[0].watched).toBe(1);
 
@@ -62,7 +63,8 @@ describe('POST /api/matches/favorites', () => {
     expect(res.status).toBe(201);
 
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT movie_id FROM favorites WHERE user_id = ?', [user.userId],
+      'SELECT movie_id FROM favorites WHERE user_id = ?',
+      [user.userId],
     );
     expect(rows).toHaveLength(1);
   });

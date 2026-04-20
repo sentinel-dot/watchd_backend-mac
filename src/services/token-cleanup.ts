@@ -44,10 +44,7 @@ async function cleanupExpiredTokens(): Promise<void> {
     const guestsDeleted = (guestResult as { affectedRows: number }).affectedRows;
 
     if (refreshDeleted > 0 || resetDeleted > 0 || guestsDeleted > 0) {
-      logger.info(
-        { refreshDeleted, resetDeleted, guestsDeleted },
-        'Token cleanup completed',
-      );
+      logger.info({ refreshDeleted, resetDeleted, guestsDeleted }, 'Token cleanup completed');
     }
   } catch (err) {
     logger.error({ err }, 'Token cleanup failed');
@@ -61,8 +58,5 @@ export function scheduleTokenCleanup(): void {
   // Then run periodically
   setInterval(cleanupExpiredTokens, CLEANUP_INTERVAL_MS);
 
-  logger.info(
-    { intervalHours: CLEANUP_INTERVAL_MS / (60 * 60 * 1000) },
-    'Token cleanup scheduled',
-  );
+  logger.info({ intervalHours: CLEANUP_INTERVAL_MS / (60 * 60 * 1000) }, 'Token cleanup scheduled');
 }

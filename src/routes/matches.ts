@@ -1,10 +1,12 @@
-import { Router, Request, Response } from 'express';
+import type { Request, Response } from 'express';
+import { Router } from 'express';
 import { pool } from '../db/connection';
-import { authMiddleware, AuthRequest } from '../middleware/auth';
+import type { AuthRequest } from '../middleware/auth';
+import { authMiddleware } from '../middleware/auth';
 import { logger } from '../logger';
 import { getMovieById } from '../services/tmdb';
 import { getStreamingOffers } from '../services/justwatch';
-import { RowDataPacket, ResultSetHeader } from 'mysql2';
+import type { RowDataPacket } from 'mysql2';
 
 const router = Router();
 
@@ -86,48 +88,53 @@ router.get('/:roomId', authMiddleware, async (req: Request, res: Response): Prom
     );
 
     const matches = await mapWithConcurrency(matchRows, 6, async (match: MatchRow) => {
-        try {
-          const movie = await getMovieById(match.movie_id);
-          const releaseYear = movie.release_date ? parseInt(movie.release_date.slice(0, 4), 10) : new Date().getFullYear();
+      try {
+        const movie = await getMovieById(match.movie_id);
+        const releaseYear = movie.release_date
+          ? parseInt(movie.release_date.slice(0, 4), 10)
+          : new Date().getFullYear();
 
-          const streamingOptions = await getStreamingOffers(match.movie_id, movie.title, releaseYear);
+        const streamingOptions = await getStreamingOffers(match.movie_id, movie.title, releaseYear);
 
-          return {
-            id: match.id,
-            roomId: match.room_id,
-            matchedAt: match.matched_at,
-            watched: Boolean(match.watched),
-            movie: {
-              id: movie.id,
-              title: movie.title,
-              overview: movie.overview,
-              posterPath: movie.poster_path,
-              backdropPath: movie.backdrop_path,
-              releaseDate: movie.release_date,
-              voteAverage: movie.vote_average,
-            },
-            streamingOptions,
-          };
-        } catch (err) {
-          logger.warn({ err, matchId: match.id, movieId: match.movie_id }, 'Failed to fetch movie details for match');
-          return {
-            id: match.id,
-            roomId: match.room_id,
-            matchedAt: match.matched_at,
-            watched: Boolean(match.watched),
-            movie: {
-              id: match.movie_id,
-              title: 'Unknown Movie',
-              overview: '',
-              posterPath: null,
-              backdropPath: null,
-              releaseDate: null,
-              voteAverage: 0,
-            },
-            streamingOptions: [],
-          };
-        }
-      });
+        return {
+          id: match.id,
+          roomId: match.room_id,
+          matchedAt: match.matched_at,
+          watched: Boolean(match.watched),
+          movie: {
+            id: movie.id,
+            title: movie.title,
+            overview: movie.overview,
+            posterPath: movie.poster_path,
+            backdropPath: movie.backdrop_path,
+            releaseDate: movie.release_date,
+            voteAverage: movie.vote_average,
+          },
+          streamingOptions,
+        };
+      } catch (err) {
+        logger.warn(
+          { err, matchId: match.id, movieId: match.movie_id },
+          'Failed to fetch movie details for match',
+        );
+        return {
+          id: match.id,
+          roomId: match.room_id,
+          matchedAt: match.matched_at,
+          watched: Boolean(match.watched),
+          movie: {
+            id: match.movie_id,
+            title: 'Unknown Movie',
+            overview: '',
+            posterPath: null,
+            backdropPath: null,
+            releaseDate: null,
+            voteAverage: 0,
+          },
+          streamingOptions: [],
+        };
+      }
+    });
 
     res.json({ matches, pagination: { total, limit, offset, hasMore: offset + limit < total } });
   } catch (err) {
@@ -152,7 +159,9 @@ router.patch('/:matchId', authMiddleware, async (req: Request, res: Response): P
   }
 
   try {
-    const [matches] = await pool.query<MatchRow[]>('SELECT room_id FROM matches WHERE id = ?', [matchId]);
+    const [matches] = await pool.query<MatchRow[]>('SELECT room_id FROM matches WHERE id = ?', [
+      matchId,
+    ]);
 
     if (matches.length === 0) {
       res.status(404).json({ error: 'Match nicht gefunden' });
@@ -201,46 +210,58 @@ router.post('/favorites', authMiddleware, async (req: Request, res: Response): P
   }
 });
 
-router.delete('/favorites/:movieId', authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const userId = (req as AuthRequest).user.userId;
-  const movieId = parseInt(req.params['movieId'], 10);
+router.delete(
+  '/favorites/:movieId',
+  authMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = (req as AuthRequest).user.userId;
+    const movieId = parseInt(req.params['movieId'], 10);
 
-  if (isNaN(movieId)) {
-    res.status(400).json({ error: 'Ungueltige Movie-ID' });
-    return;
-  }
+    if (isNaN(movieId)) {
+      res.status(400).json({ error: 'Ungueltige Movie-ID' });
+      return;
+    }
 
-  try {
-    await pool.query('DELETE FROM favorites WHERE user_id = ? AND movie_id = ?', [userId, movieId]);
+    try {
+      await pool.query('DELETE FROM favorites WHERE user_id = ? AND movie_id = ?', [
+        userId,
+        movieId,
+      ]);
 
-    res.json({ message: 'Favorite removed', movieId });
-  } catch (err) {
-    logger.error({ err, userId, movieId }, 'Remove favorite error');
-    res.status(500).json({ error: 'Interner Serverfehler' });
-  }
-});
+      res.json({ message: 'Favorite removed', movieId });
+    } catch (err) {
+      logger.error({ err, userId, movieId }, 'Remove favorite error');
+      res.status(500).json({ error: 'Interner Serverfehler' });
+    }
+  },
+);
 
-router.get('/favorites/list', authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const userId = (req as AuthRequest).user.userId;
-  const limit = Math.min(Math.max(parseInt(req.query['limit'] as string, 10) || 20, 1), 50);
-  const offset = Math.max(parseInt(req.query['offset'] as string, 10) || 0, 0);
+router.get(
+  '/favorites/list',
+  authMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = (req as AuthRequest).user.userId;
+    const limit = Math.min(Math.max(parseInt(req.query['limit'] as string, 10) || 20, 1), 50);
+    const offset = Math.max(parseInt(req.query['offset'] as string, 10) || 0, 0);
 
-  try {
-    const [countResult] = await pool.query<CountRow[]>(
-      'SELECT COUNT(*) AS total FROM favorites WHERE user_id = ?',
-      [userId],
-    );
-    const total = countResult[0].total;
+    try {
+      const [countResult] = await pool.query<CountRow[]>(
+        'SELECT COUNT(*) AS total FROM favorites WHERE user_id = ?',
+        [userId],
+      );
+      const total = countResult[0].total;
 
-    const [favoriteRows] = await pool.query<FavoriteRow[]>(
-      'SELECT id, movie_id, created_at FROM favorites WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
-      [userId, limit, offset],
-    );
+      const [favoriteRows] = await pool.query<FavoriteRow[]>(
+        'SELECT id, movie_id, created_at FROM favorites WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+        [userId, limit, offset],
+      );
 
-    const favorites = await mapWithConcurrency(favoriteRows, 6, async (fav: FavoriteRow) => {
+      const favorites = await mapWithConcurrency(favoriteRows, 6, async (fav: FavoriteRow) => {
         try {
           const movie = await getMovieById(fav.movie_id);
-          const releaseYear = movie.release_date ? parseInt(movie.release_date.slice(0, 4), 10) : new Date().getFullYear();
+          const releaseYear = movie.release_date
+            ? parseInt(movie.release_date.slice(0, 4), 10)
+            : new Date().getFullYear();
           const streamingOptions = await getStreamingOffers(fav.movie_id, movie.title, releaseYear);
 
           return {
@@ -258,7 +279,10 @@ router.get('/favorites/list', authMiddleware, async (req: Request, res: Response
             streamingOptions,
           };
         } catch (err) {
-          logger.warn({ err, favoriteId: fav.id, movieId: fav.movie_id }, 'Failed to fetch movie details for favorite');
+          logger.warn(
+            { err, favoriteId: fav.id, movieId: fav.movie_id },
+            'Failed to fetch movie details for favorite',
+          );
           return {
             id: fav.id,
             createdAt: fav.created_at,
@@ -276,11 +300,15 @@ router.get('/favorites/list', authMiddleware, async (req: Request, res: Response
         }
       });
 
-    res.json({ favorites, pagination: { total, limit, offset, hasMore: offset + limit < total } });
-  } catch (err) {
-    logger.error({ err, userId }, 'Get favorites error');
-    res.status(500).json({ error: 'Interner Serverfehler' });
-  }
-});
+      res.json({
+        favorites,
+        pagination: { total, limit, offset, hasMore: offset + limit < total },
+      });
+    } catch (err) {
+      logger.error({ err, userId }, 'Get favorites error');
+      res.status(500).json({ error: 'Interner Serverfehler' });
+    }
+  },
+);
 
 export default router;

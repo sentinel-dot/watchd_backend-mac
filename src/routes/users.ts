@@ -1,9 +1,11 @@
-import { Router, Request, Response } from 'express';
+import type { Request, Response } from 'express';
+import { Router } from 'express';
 import { body, validationResult } from 'express-validator';
 import { pool } from '../db/connection';
-import { authMiddleware, AuthRequest } from '../middleware/auth';
+import type { AuthRequest } from '../middleware/auth';
+import { authMiddleware } from '../middleware/auth';
 import { logger } from '../logger';
-import { RowDataPacket } from 'mysql2';
+import type { RowDataPacket } from 'mysql2';
 
 const router = Router();
 
@@ -17,7 +19,12 @@ interface UserRow extends RowDataPacket {
 router.patch(
   '/me',
   authMiddleware,
-  [body('name').trim().isLength({ min: 1, max: 64 }).withMessage('Name muss zwischen 1 und 64 Zeichen lang sein')],
+  [
+    body('name')
+      .trim()
+      .isLength({ min: 1, max: 64 })
+      .withMessage('Name muss zwischen 1 und 64 Zeichen lang sein'),
+  ],
   async (req: Request, res: Response): Promise<void> => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -31,9 +38,10 @@ router.patch(
     try {
       await pool.query('UPDATE users SET name = ? WHERE id = ?', [name, userId]);
 
-      const [users] = await pool.query<UserRow[]>('SELECT id, name, email, is_guest FROM users WHERE id = ?', [
-        userId,
-      ]);
+      const [users] = await pool.query<UserRow[]>(
+        'SELECT id, name, email, is_guest FROM users WHERE id = ?',
+        [userId],
+      );
 
       if (users.length === 0) {
         res.status(404).json({ error: 'Benutzer nicht gefunden' });
@@ -58,7 +66,13 @@ router.patch(
 router.post(
   '/me/device-token',
   authMiddleware,
-  [body('deviceToken').isString().trim().isLength({ min: 32, max: 255 }).withMessage('Invalid device token')],
+  [
+    body('deviceToken')
+      .isString()
+      .trim()
+      .isLength({ min: 32, max: 255 })
+      .withMessage('Invalid device token'),
+  ],
   async (req: Request, res: Response): Promise<void> => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

@@ -8,8 +8,14 @@ function buildRes(): Response {
   const res = {
     statusCode: 200,
     body: undefined as unknown,
-    status(code: number) { this.statusCode = code; return this; },
-    json(b: unknown) { this.body = b; return this; },
+    status(code: number) {
+      this.statusCode = code;
+      return this;
+    },
+    json(b: unknown) {
+      this.body = b;
+      return this;
+    },
   };
   return res as unknown as Response;
 }
@@ -49,11 +55,9 @@ describe('authMiddleware', () => {
   });
 
   it('returns 401 for an expired JWT', () => {
-    const expiredToken = jwt.sign(
-      { userId: 1, email: 'a@b.c', isGuest: false },
-      config.jwtSecret,
-      { expiresIn: '-1s' },
-    );
+    const expiredToken = jwt.sign({ userId: 1, email: 'a@b.c', isGuest: false }, config.jwtSecret, {
+      expiresIn: '-1s',
+    });
     const req = { headers: { authorization: `Bearer ${expiredToken}` } } as unknown as Request;
     const res = buildRes();
     const next = vi.fn() as NextFunction;
@@ -65,11 +69,9 @@ describe('authMiddleware', () => {
   });
 
   it('calls next() and attaches user for a valid JWT', () => {
-    const token = jwt.sign(
-      { userId: 42, email: 'x@y.z', isGuest: false },
-      config.jwtSecret,
-      { expiresIn: '15m' },
-    );
+    const token = jwt.sign({ userId: 42, email: 'x@y.z', isGuest: false }, config.jwtSecret, {
+      expiresIn: '15m',
+    });
     const req = { headers: { authorization: `Bearer ${token}` } } as unknown as Request;
     const res = buildRes();
     const next = vi.fn() as NextFunction;

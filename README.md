@@ -13,6 +13,7 @@ Node.js/Express + Socket.io Backend für Watchd — eine Tinder-style Movie-Matc
 - **TMDB API Key** — v3 Key oder v4 Read Access Token ([themoviedb.org/settings/api](https://www.themoviedb.org/settings/api))
 
 Optional für Push / Mail:
+
 - **APNs .p8 Key** — aus Apple Developer Portal (nur wenn Push getestet wird)
 - **SMTP-Zugang** — sonst werden Mails auf Console geloggt
 

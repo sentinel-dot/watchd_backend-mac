@@ -1,6 +1,7 @@
 import path from 'path';
 import http from 'http';
-import express, { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction } from 'express';
+import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
@@ -32,20 +33,23 @@ export function createApp(options?: CreateAppOptions): CreateAppResult {
   // Trust the first hop so express-rate-limit can read X-Forwarded-For correctly.
   app.set('trust proxy', 1);
 
-  app.use(helmet({
-    contentSecurityPolicy: false,
-    crossOriginEmbedderPolicy: false,
-  }));
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
 
   const corsOrigins = config.corsOrigins;
-  const parsedOrigins: string | string[] = corsOrigins === '*'
-    ? '*'
-    : corsOrigins.split(',').map((s: string) => s.trim());
-  app.use(cors({
-    origin: parsedOrigins,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  }));
+  const parsedOrigins: string | string[] =
+    corsOrigins === '*' ? '*' : corsOrigins.split(',').map((s: string) => s.trim());
+  app.use(
+    cors({
+      origin: parsedOrigins,
+      methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+    }),
+  );
   app.use(express.json({ limit: '1mb' }));
 
   const publicDir = path.join(process.cwd(), 'public');
@@ -110,7 +114,7 @@ export function createApp(options?: CreateAppOptions): CreateAppResult {
 
       const response = await fetch(
         `https://api.themoviedb.org/3/configuration?api_key=${config.tmdbApiKey}`,
-        { signal: controller.signal }
+        { signal: controller.signal },
       );
 
       clearTimeout(timeout);
@@ -173,12 +177,16 @@ export function createApp(options?: CreateAppOptions): CreateAppResult {
     <h1>WATCHD</h1>
     <h2>Passwort zurücksetzen</h2>
     <p>Um dein Passwort zurückzusetzen, öffne diesen Link in der Watchd-App.</p>
-    ${deepLink ? `
+    ${
+      deepLink
+        ? `
     <hr class="divider">
     <p>Hast du die App bereits installiert?</p>
     <a href="${deepLink}" class="btn">In App öffnen</a>
     <hr class="divider">
-    ` : ''}
+    `
+        : ''
+    }
     <p>Du hast die App noch nicht installiert?<br>Bitte installiere Watchd zuerst und fordere danach einen neuen Reset-Link an — der Link ist nur <strong style="color:#fff">1 Stunde</strong> gültig.</p>
     <p class="hint">Falls du diese E-Mail nicht angefordert hast, kannst du sie ignorieren.</p>
   </div>

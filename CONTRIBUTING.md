@@ -11,6 +11,7 @@ Dieses Dokument beschreibt den Arbeitsablauf für Änderungen an diesem Repo. Zi
 **Code-Änderungen gehen immer über einen Pull Request.** Kein direkter Push auf `main` für alles was Runtime-Verhalten berühren kann: Code in `src/`, Tests, Config (`package.json`, `tsconfig.json`, Schema, `.env.example`). GitHub lehnt Direct-Pushes standardmäßig ab. Railway deployt ausschließlich `main` — sobald etwas dort landet, geht es live.
 
 **Ausnahme — direkter Push auf `main` erlaubt für:**
+
 - Reine Doku-Änderungen in `.md`-Dateien (Typo, CLAUDE.md-Statusupdate, README-Fix)
 - Kommentare in Source-Files, die keine Code-Logik ändern
 - Prod-Notfall, wenn der PR-Zyklus zu langsam ist
@@ -53,14 +54,14 @@ Siehe [Arbeitsablauf — Schritt für Schritt](#arbeitsablauf--schritt-für-schr
 
 Präfix + kurze Beschreibung, Wörter mit Bindestrich getrennt:
 
-| Präfix | Wann | Beispiel |
-|--------|------|----------|
-| `fix/` | Bugfix | `fix/room-join-status` |
-| `feat/` | Neues Feature | `feat/push-silent-disconnect` |
-| `docs/` | Nur Dokumentation | `docs/railway-deployment` |
+| Präfix      | Wann                               | Beispiel                          |
+| ----------- | ---------------------------------- | --------------------------------- |
+| `fix/`      | Bugfix                             | `fix/room-join-status`            |
+| `feat/`     | Neues Feature                      | `feat/push-silent-disconnect`     |
+| `docs/`     | Nur Dokumentation                  | `docs/railway-deployment`         |
 | `refactor/` | Code-Umbau ohne Verhaltensänderung | `refactor/extract-match-notifier` |
-| `test/` | Nur Tests hinzufügen/fixen | `test/room-stack-refill` |
-| `chore/` | Infrastruktur/Tooling | `chore/upgrade-vitest` |
+| `test/`     | Nur Tests hinzufügen/fixen         | `test/room-stack-refill`          |
+| `chore/`    | Infrastruktur/Tooling              | `chore/upgrade-vitest`            |
 
 ---
 
@@ -77,6 +78,7 @@ Präfix + kurze Beschreibung, Wörter mit Bindestrich getrennt:
 Typen: `fix`, `feat`, `docs`, `refactor`, `test`, `chore`, `perf`.
 
 **Gute Beispiele:**
+
 ```
 fix: set room status to active after second member joins
 feat: add silent push to disconnect partner socket
@@ -84,6 +86,7 @@ docs: document Railway rollback procedure
 ```
 
 **Schlechte Beispiele:**
+
 ```
 update                           ← sagt nichts
 fix stuff                        ← sagt nichts
@@ -146,6 +149,7 @@ git push -u origin fix/room-join-status
 ### 7. Pull Request öffnen
 
 Nach dem Push zeigt dir GitHub eine URL wie:
+
 ```
 https://github.com/<user>/watchd_backend-mac/pull/new/fix/room-join-status
 ```
@@ -153,6 +157,7 @@ https://github.com/<user>/watchd_backend-mac/pull/new/fix/room-join-status
 Oder auf der Repo-Seite erscheint ein gelber Banner **„Compare & pull request"** — anklicken.
 
 Im PR-Formular:
+
 - **Title**: analog zur Commit-Message (`fix: set room status to active after second member joins`)
 - **Description**:
   - _Was_ die Änderung tut
@@ -163,6 +168,7 @@ Im PR-Formular:
 ### 8. CI abwarten
 
 Unten im PR erscheinen die Checks. Nach ~90 Sekunden sollte „All checks have passed ✓" stehen. Wenn rot:
+
 - Auf „Details" klicken → GitHub Actions Log öffnet sich
 - Fehler analysieren, lokal fixen, `git add` + `git commit` + `git push` → CI läuft automatisch neu
 
@@ -218,11 +224,13 @@ Als Repo-Admin bist du in der **Bypass-Liste** der Ruleset-Regel auf `main`. Dam
 ### Wann direct-pushen
 
 **Erlaubt:**
+
 - `.md`-Dateien (README, CLAUDE.md, CONTRIBUTING.md, docs/, etc.)
 - Pure Kommentar-Änderungen in Source-Code
 - Prod-Notfall mit Zeitdruck
 
 **Nicht erlaubt** (auch wenn technisch möglich):
+
 - Änderungen in `src/`, die Code-Logik berühren
 - Test-Änderungen
 - Dependency-Updates (`package.json`, `package-lock.json`)
@@ -232,6 +240,7 @@ Als Repo-Admin bist du in der **Bypass-Liste** der Ruleset-Regel auf `main`. Dam
 ### Was nach einem Notfall-Bypass zu tun ist
 
 Nach einem Hotfix-Direct-Push auf `main` **trotzdem** im Nachgang:
+
 - CI lokal reproduzieren (`npm run typecheck && npm test`) — falls du im Notfall CI übersprungen hast
 - Wenn das Problem ein grundsätzlicher Code-Fehler war: Follow-up-PR mit Test erstellen, damit derselbe Fehler nicht wiederkommt
 

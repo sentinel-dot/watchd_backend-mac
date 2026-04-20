@@ -89,7 +89,9 @@ describe('DELETE /api/rooms/:id/leave', () => {
       .set('Authorization', `Bearer ${user.accessToken}`);
     expect(res.status).toBe(200);
 
-    const [rows] = await pool.query<RowDataPacket[]>('SELECT id FROM rooms WHERE id = ?', [room.id]);
+    const [rows] = await pool.query<RowDataPacket[]>('SELECT id FROM rooms WHERE id = ?', [
+      room.id,
+    ]);
     expect(rows).toHaveLength(0);
   });
 
@@ -112,7 +114,10 @@ describe('DELETE /api/rooms/:id/leave', () => {
     expect(rows[0].status).toBe('waiting');
 
     expect(__io.to).toHaveBeenCalledWith(`room:${room.id}`);
-    expect(__io.to(`room:${room.id}`).emit).toHaveBeenCalledWith('partner_left', expect.any(Object));
+    expect(__io.to(`room:${room.id}`).emit).toHaveBeenCalledWith(
+      'partner_left',
+      expect.any(Object),
+    );
   });
 
   it('dissolves the room when the last of two members leaves after use', async () => {
@@ -143,15 +148,21 @@ describe('DELETE /api/rooms/:id/archive', () => {
     const room = await createRoom(agent, alice.accessToken);
     await joinRoom(agent, bob.accessToken, room.code);
     // Use the room so it dissolves (both leave)
-    await agent.delete(`/api/rooms/${room.id}/leave`).set('Authorization', `Bearer ${alice.accessToken}`);
-    await agent.delete(`/api/rooms/${room.id}/leave`).set('Authorization', `Bearer ${bob.accessToken}`);
+    await agent
+      .delete(`/api/rooms/${room.id}/leave`)
+      .set('Authorization', `Bearer ${alice.accessToken}`);
+    await agent
+      .delete(`/api/rooms/${room.id}/leave`)
+      .set('Authorization', `Bearer ${bob.accessToken}`);
 
     // Alice deletes from archive first — row should still exist
     const first = await agent
       .delete(`/api/rooms/${room.id}/archive`)
       .set('Authorization', `Bearer ${alice.accessToken}`);
     expect(first.status).toBe(200);
-    const [stillExists] = await pool.query<RowDataPacket[]>('SELECT id FROM rooms WHERE id = ?', [room.id]);
+    const [stillExists] = await pool.query<RowDataPacket[]>('SELECT id FROM rooms WHERE id = ?', [
+      room.id,
+    ]);
     expect(stillExists).toHaveLength(1);
 
     // Bob deletes from archive → hard-deleted
@@ -159,7 +170,9 @@ describe('DELETE /api/rooms/:id/archive', () => {
       .delete(`/api/rooms/${room.id}/archive`)
       .set('Authorization', `Bearer ${bob.accessToken}`);
     expect(second.status).toBe(200);
-    const [gone] = await pool.query<RowDataPacket[]>('SELECT id FROM rooms WHERE id = ?', [room.id]);
+    const [gone] = await pool.query<RowDataPacket[]>('SELECT id FROM rooms WHERE id = ?', [
+      room.id,
+    ]);
     expect(gone).toHaveLength(0);
   });
 });
@@ -226,7 +239,9 @@ describe('GET /api/rooms', () => {
       .delete(`/api/rooms/${room.id}/leave`)
       .set('Authorization', `Bearer ${alice.accessToken}`);
 
-    const aliceList = await agent.get('/api/rooms').set('Authorization', `Bearer ${alice.accessToken}`);
+    const aliceList = await agent
+      .get('/api/rooms')
+      .set('Authorization', `Bearer ${alice.accessToken}`);
     expect(aliceList.body.rooms).toHaveLength(0);
 
     const bobList = await agent.get('/api/rooms').set('Authorization', `Bearer ${bob.accessToken}`);
@@ -247,7 +262,9 @@ describe('GET /api/rooms/:id', () => {
     const room = await createRoom(agent, alice.accessToken);
     await joinRoom(agent, bob.accessToken, room.code);
 
-    const res = await agent.get(`/api/rooms/${room.id}`).set('Authorization', `Bearer ${alice.accessToken}`);
+    const res = await agent
+      .get(`/api/rooms/${room.id}`)
+      .set('Authorization', `Bearer ${alice.accessToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.room.id).toBe(room.id);
@@ -270,7 +287,9 @@ describe('GET /api/rooms/:id', () => {
 
   it('returns 404 for an unknown room id', async () => {
     const user = await createUser(agent, { email: 'nf-get@example.com' });
-    const res = await agent.get('/api/rooms/999999').set('Authorization', `Bearer ${user.accessToken}`);
+    const res = await agent
+      .get('/api/rooms/999999')
+      .set('Authorization', `Bearer ${user.accessToken}`);
     expect(res.status).toBe(404);
   });
 });
