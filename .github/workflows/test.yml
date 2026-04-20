@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   test:
-    name: Typecheck + Tests
+    name: Lint + Typecheck + Tests
     runs-on: ubuntu-latest
 
     services:
@@ -43,6 +43,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
 
       - name: Type check
         run: npm run typecheck

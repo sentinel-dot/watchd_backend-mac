@@ -1,12 +1,14 @@
-import { Router, Request, Response } from 'express';
+import type { Request, Response } from 'express';
+import { Router } from 'express';
 import { pool } from '../db/connection';
-import { authMiddleware, AuthRequest } from '../middleware/auth';
+import type { AuthRequest } from '../middleware/auth';
+import { authMiddleware } from '../middleware/auth';
 import { logger } from '../logger';
 import { checkAndCreateMatch } from '../services/matchmaking';
 import { sendMatchPush } from '../services/apns';
 import { getIo } from '../socket';
 import { SocketEvents } from '../socket/events';
-import { RowDataPacket } from 'mysql2';
+import type { RowDataPacket } from 'mysql2';
 
 const router = Router();
 
@@ -77,10 +79,10 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
            WHERE rm.room_id = ? AND u.device_token IS NOT NULL`,
           [roomId],
         );
-        const tokens = tokenRows.map(r => r.device_token).filter((t): t is string => t !== null);
+        const tokens = tokenRows.map((r) => r.device_token).filter((t): t is string => t !== null);
         logger.info({ roomId, tokenCount: tokens.length }, 'APNs: device tokens found for room');
         if (tokens.length > 0) {
-          sendMatchPush(tokens, result.movieTitle ?? 'einem Film').catch(err =>
+          sendMatchPush(tokens, result.movieTitle ?? 'einem Film').catch((err) =>
             logger.error({ err }, 'APNs push failed'),
           );
         }

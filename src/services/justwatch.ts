@@ -3,16 +3,16 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 // Canonical provider display name → icon filename in public/icons
 const PROVIDER_ICONS: Record<string, string> = {
-  'Netflix': 'netflix.png',
+  Netflix: 'netflix.png',
   'Prime Video': 'amazon-prime.png',
   'Disney Plus': 'disney-plus.png',
   'Apple TV+': 'apple-tv.png',
   'HBO Max': 'hbo-max.png',
-  'Joyn': 'joyn.png',
+  Joyn: 'joyn.png',
   'Paramount+': 'paramount-plus.png',
   'Rakuten TV': 'rakuten-tv.png',
   'RTL+': 'rtl-plus.png',
-  'WOW': 'wow.png',
+  WOW: 'wow.png',
   'Magenta TV': 'magenta-tv.png',
   'Sky Go': 'sky-go.png',
 };
@@ -178,8 +178,8 @@ export async function getStreamingOffers(
 
     // Nur echte Streaming-Abos (flatrate) und kostenlose Angebote – keine Kinos, kein Kauf/Leihe (JPC, Thalia, Cinestar, UCI, Filmspiegel etc.)
     const STREAMING_MONETIZATION = new Set(['flatrate', 'free']);
-    const filtered = allOffers.filter(
-      (o) => STREAMING_MONETIZATION.has(o.monetizationType?.toLowerCase?.() ?? ''),
+    const filtered = allOffers.filter((o) =>
+      STREAMING_MONETIZATION.has(o.monetizationType?.toLowerCase?.() ?? ''),
     );
 
     // Anzeigenamen vereinheitlichen und statische Icon-Pfade aus public/icons ergänzen.

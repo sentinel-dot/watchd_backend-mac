@@ -15,7 +15,11 @@ describe('POST /api/auth/register', () => {
     expect(res.status).toBe(201);
     expect(res.body.token).toBeTypeOf('string');
     expect(res.body.refreshToken).toBeTypeOf('string');
-    expect(res.body.user).toMatchObject({ name: 'Alice', email: 'alice@example.com', isGuest: false });
+    expect(res.body.user).toMatchObject({
+      name: 'Alice',
+      email: 'alice@example.com',
+      isGuest: false,
+    });
     expect(res.body.user.id).toBeTypeOf('number');
   });
 
@@ -109,7 +113,9 @@ describe('POST /api/auth/refresh', () => {
     expect(reuse.status).toBe(401);
 
     // The new refresh token (from the successful rotation) must also be revoked
-    const newDecoded = JSON.parse(Buffer.from(first.body.refreshToken, 'base64url').toString('utf-8'));
+    const newDecoded = JSON.parse(
+      Buffer.from(first.body.refreshToken, 'base64url').toString('utf-8'),
+    );
     const newHash = crypto.createHash('sha256').update(newDecoded.tok).digest('hex');
     const [rows] = await pool.query<(RowDataPacket & { revoked: number })[]>(
       'SELECT revoked FROM refresh_tokens WHERE token_hash = ?',
@@ -127,10 +133,10 @@ describe('POST /api/auth/refresh', () => {
     const user = await createUser(agent);
     const decoded = JSON.parse(Buffer.from(user.refreshToken, 'base64url').toString('utf-8'));
     const hash = crypto.createHash('sha256').update(decoded.tok).digest('hex');
-    await pool.query(
-      'UPDATE refresh_tokens SET expires_at = ? WHERE token_hash = ?',
-      [new Date(Date.now() - 1000), hash],
-    );
+    await pool.query('UPDATE refresh_tokens SET expires_at = ? WHERE token_hash = ?', [
+      new Date(Date.now() - 1000),
+      hash,
+    ]);
     const res = await agent.post('/api/auth/refresh').send({ refreshToken: user.refreshToken });
     expect(res.status).toBe(401);
   });
@@ -159,18 +165,27 @@ describe('POST /api/auth/reset-password', () => {
   }
 
   it('resets the password and revokes all refresh tokens', async () => {
-    const user = await createUser(agent, { email: 'reset@example.com', password: 'old-password-1' });
+    const user = await createUser(agent, {
+      email: 'reset@example.com',
+      password: 'old-password-1',
+    });
     const token = await requestResetToken('reset@example.com');
 
-    const res = await agent.post('/api/auth/reset-password').send({ token, newPassword: 'new-password-1' });
+    const res = await agent
+      .post('/api/auth/reset-password')
+      .send({ token, newPassword: 'new-password-1' });
     expect(res.status).toBe(200);
 
     // Old password rejected
-    const oldLogin = await agent.post('/api/auth/login').send({ email: 'reset@example.com', password: 'old-password-1' });
+    const oldLogin = await agent
+      .post('/api/auth/login')
+      .send({ email: 'reset@example.com', password: 'old-password-1' });
     expect(oldLogin.status).toBe(401);
 
     // New password works
-    const newLogin = await agent.post('/api/auth/login').send({ email: 'reset@example.com', password: 'new-password-1' });
+    const newLogin = await agent
+      .post('/api/auth/login')
+      .send({ email: 'reset@example.com', password: 'new-password-1' });
     expect(newLogin.status).toBe(200);
 
     // Prior refresh token revoked
@@ -182,10 +197,14 @@ describe('POST /api/auth/reset-password', () => {
     await createUser(agent, { email: 'reset2@example.com' });
     const token = await requestResetToken('reset2@example.com');
 
-    const first = await agent.post('/api/auth/reset-password').send({ token, newPassword: 'new-password-1' });
+    const first = await agent
+      .post('/api/auth/reset-password')
+      .send({ token, newPassword: 'new-password-1' });
     expect(first.status).toBe(200);
 
-    const second = await agent.post('/api/auth/reset-password').send({ token, newPassword: 'other-password-1' });
+    const second = await agent
+      .post('/api/auth/reset-password')
+      .send({ token, newPassword: 'other-password-1' });
     expect(second.status).toBe(400);
   });
 
@@ -193,11 +212,13 @@ describe('POST /api/auth/reset-password', () => {
     await createUser(agent, { email: 'reset3@example.com' });
     const token = await requestResetToken('reset3@example.com');
     const hash = crypto.createHash('sha256').update(token).digest('hex');
-    await pool.query(
-      'UPDATE password_reset_tokens SET expires_at = ? WHERE token_hash = ?',
-      [new Date(Date.now() - 1000), hash],
-    );
-    const res = await agent.post('/api/auth/reset-password').send({ token, newPassword: 'new-password-1' });
+    await pool.query('UPDATE password_reset_tokens SET expires_at = ? WHERE token_hash = ?', [
+      new Date(Date.now() - 1000),
+      hash,
+    ]);
+    const res = await agent
+      .post('/api/auth/reset-password')
+      .send({ token, newPassword: 'new-password-1' });
     expect(res.status).toBe(400);
   });
 });
@@ -214,7 +235,8 @@ describe('POST /api/auth/upgrade', () => {
     expect(res.body.user.email).toBe('upgraded@example.com');
 
     const [rows] = await pool.query<(RowDataPacket & { is_guest: number })[]>(
-      'SELECT is_guest FROM users WHERE id = ?', [guest.userId],
+      'SELECT is_guest FROM users WHERE id = ?',
+      [guest.userId],
     );
     expect(rows[0].is_guest).toBe(0);
   });
@@ -258,10 +280,14 @@ describe('DELETE /api/auth/delete-account', () => {
       .set('Authorization', `Bearer ${user.accessToken}`);
     expect(res.status).toBe(200);
 
-    const [rows] = await pool.query<RowDataPacket[]>('SELECT id FROM users WHERE id = ?', [user.userId]);
+    const [rows] = await pool.query<RowDataPacket[]>('SELECT id FROM users WHERE id = ?', [
+      user.userId,
+    ]);
     expect(rows.length).toBe(0);
 
-    const login = await agent.post('/api/auth/login').send({ email: 'del@example.com', password: 'delete-me-123' });
+    const login = await agent
+      .post('/api/auth/login')
+      .send({ email: 'del@example.com', password: 'delete-me-123' });
     expect(login.status).toBe(401);
   });
 });

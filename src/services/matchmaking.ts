@@ -1,8 +1,9 @@
 import { pool } from '../db/connection';
 import { logger } from '../logger';
 import { getMovieById } from './tmdb';
-import { getStreamingOffers, StreamingOffer } from './justwatch';
-import { RowDataPacket, ResultSetHeader } from 'mysql2';
+import type { StreamingOffer } from './justwatch';
+import { getStreamingOffers } from './justwatch';
+import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 export interface MatchResult {
   isMatch: boolean;
@@ -32,7 +33,10 @@ export async function checkAndCreateMatch(
   );
 
   const memberCount = members.length;
-  logger.info({ roomId, memberCount, memberIds: members.map(m => m.user_id) }, 'Checking match - room members');
+  logger.info(
+    { roomId, memberCount, memberIds: members.map((m) => m.user_id) },
+    'Checking match - room members',
+  );
 
   const [swipes] = await pool.query<SwipeRow[]>(
     `SELECT user_id FROM swipes
@@ -41,15 +45,18 @@ export async function checkAndCreateMatch(
   );
 
   const rightSwipeCount = swipes.length;
-  const swipedUserIds = swipes.map(s => s.user_id);
-  logger.info({ 
-    roomId, 
-    movieId, 
-    memberCount, 
-    rightSwipeCount, 
-    swipedUserIds,
-    needsMatch: rightSwipeCount >= memberCount 
-  }, 'Checking match - swipe status');
+  const swipedUserIds = swipes.map((s) => s.user_id);
+  logger.info(
+    {
+      roomId,
+      movieId,
+      memberCount,
+      rightSwipeCount,
+      swipedUserIds,
+      needsMatch: rightSwipeCount >= memberCount,
+    },
+    'Checking match - swipe status',
+  );
 
   if (memberCount < 2 || swipes.length < memberCount) {
     return { isMatch: false };

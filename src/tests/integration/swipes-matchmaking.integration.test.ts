@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { agent } from '../setup';
 import { pool } from '../../db/connection';
 import { createUser, createRoom, joinRoom, seedStackMovie, seedSwipe } from '../helpers';

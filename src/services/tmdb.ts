@@ -1,5 +1,4 @@
 import { config } from '../config';
-import { logger } from '../logger';
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 

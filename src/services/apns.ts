@@ -9,7 +9,10 @@ function getProvider(): apn.Provider | null {
 
   const { keyId, teamId, key } = config.apns;
   if (!keyId || !teamId || !key) {
-    logger.warn({ hasKeyId: !!keyId, hasTeamId: !!teamId, hasKey: !!key }, 'APNs provider not initialized — missing config');
+    logger.warn(
+      { hasKeyId: !!keyId, hasTeamId: !!teamId, hasKey: !!key },
+      'APNs provider not initialized — missing config',
+    );
     return null;
   }
 

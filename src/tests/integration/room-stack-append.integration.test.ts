@@ -1,15 +1,14 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
+import type * as RoomStackModule from '../../services/room-stack';
 import { pool } from '../../db/connection';
 import { createUser } from '../helpers';
 import { agent } from '../setup';
 
 // Bypass the global mock from setup.ts for the real implementation under test.
-let appendRoomStack!: typeof import('../../services/room-stack').appendRoomStack;
+let appendRoomStack!: typeof RoomStackModule.appendRoomStack;
 beforeAll(async () => {
-  const actual = await vi.importActual<typeof import('../../services/room-stack')>(
-    '../../services/room-stack',
-  );
+  const actual = await vi.importActual<typeof RoomStackModule>('../../services/room-stack');
   appendRoomStack = actual.appendRoomStack;
 });
 
@@ -65,16 +64,23 @@ describe('appendRoomStack (real implementation)', () => {
 
     await appendRoomStack(roomId);
 
-    const [stackRows] = await pool.query<(RowDataPacket & { movie_id: number; position: number })[]>(
-      'SELECT movie_id, position FROM room_stack WHERE room_id = ? ORDER BY position ASC',
-      [roomId],
-    );
+    const [stackRows] = await pool.query<
+      (RowDataPacket & { movie_id: number; position: number })[]
+    >('SELECT movie_id, position FROM room_stack WHERE room_id = ? ORDER BY position ASC', [
+      roomId,
+    ]);
     expect(stackRows.map((r) => r.movie_id)).toEqual([601, 602, 701, 801, 802, 901, 1001]);
     expect(stackRows[0].position).toBe(0);
 
     const [roomRows] = await pool.query<
-      (RowDataPacket & { stack_next_page: number; stack_generating: number; stack_exhausted: number })[]
-    >('SELECT stack_next_page, stack_generating, stack_exhausted FROM rooms WHERE id = ?', [roomId]);
+      (RowDataPacket & {
+        stack_next_page: number;
+        stack_generating: number;
+        stack_exhausted: number;
+      })[]
+    >('SELECT stack_next_page, stack_generating, stack_exhausted FROM rooms WHERE id = ?', [
+      roomId,
+    ]);
     expect(roomRows[0].stack_next_page).toBe(11);
     expect(roomRows[0].stack_generating).toBe(0);
     expect(roomRows[0].stack_exhausted).toBe(0);
@@ -115,8 +121,14 @@ describe('appendRoomStack (real implementation)', () => {
     await appendRoomStack(roomId);
 
     const [roomRows] = await pool.query<
-      (RowDataPacket & { stack_next_page: number; stack_generating: number; stack_exhausted: number })[]
-    >('SELECT stack_next_page, stack_generating, stack_exhausted FROM rooms WHERE id = ?', [roomId]);
+      (RowDataPacket & {
+        stack_next_page: number;
+        stack_generating: number;
+        stack_exhausted: number;
+      })[]
+    >('SELECT stack_next_page, stack_generating, stack_exhausted FROM rooms WHERE id = ?', [
+      roomId,
+    ]);
     expect(roomRows[0].stack_generating).toBe(0);
     expect(roomRows[0].stack_exhausted).toBe(1);
     expect(roomRows[0].stack_next_page).toBe(501);

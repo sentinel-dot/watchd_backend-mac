@@ -1,11 +1,13 @@
-import { Router, Request, Response } from 'express';
+import type { Request, Response } from 'express';
+import { Router } from 'express';
 import { pool } from '../db/connection';
-import { authMiddleware, AuthRequest } from '../middleware/auth';
+import type { AuthRequest } from '../middleware/auth';
+import { authMiddleware } from '../middleware/auth';
 import { logger } from '../logger';
 import { getIo } from '../socket';
 import { SocketEvents } from '../socket/events';
 import { generateRoomStack } from '../services/room-stack';
-import { RowDataPacket, ResultSetHeader } from 'mysql2';
+import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 const router = Router();
 
@@ -69,7 +71,11 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
     );
     const roomId = result.insertId;
 
-    await pool.query('INSERT INTO room_members (room_id, user_id, is_active) VALUES (?, ?, ?)', [roomId, userId, true]);
+    await pool.query('INSERT INTO room_members (room_id, user_id, is_active) VALUES (?, ?, ?)', [
+      roomId,
+      userId,
+      true,
+    ]);
 
     await generateRoomStack(roomId, filters || {});
 
@@ -120,12 +126,14 @@ router.post('/join', authMiddleware, async (req: Request, res: Response): Promis
 
     if (membership.length > 0) {
       if (!membership[0].is_active) {
-        await pool.query('UPDATE room_members SET is_active = ? WHERE room_id = ? AND user_id = ?', [
-          true,
+        await pool.query(
+          'UPDATE room_members SET is_active = ? WHERE room_id = ? AND user_id = ?',
+          [true, room.id, userId],
+        );
+        await pool.query('UPDATE rooms SET status = ?, last_activity_at = NOW() WHERE id = ?', [
+          'active',
           room.id,
-          userId,
         ]);
-        await pool.query('UPDATE rooms SET status = ?, last_activity_at = NOW() WHERE id = ?', ['active', room.id]);
         room.status = 'active';
 
         const io = getIo();
@@ -153,7 +161,10 @@ router.post('/join', authMiddleware, async (req: Request, res: Response): Promis
     ]);
 
     const newStatus = countRows[0].count === 1 ? 'active' : 'waiting';
-    await pool.query('UPDATE rooms SET status = ?, last_activity_at = NOW() WHERE id = ?', [newStatus, room.id]);
+    await pool.query('UPDATE rooms SET status = ?, last_activity_at = NOW() WHERE id = ?', [
+      newStatus,
+      room.id,
+    ]);
     room.status = newStatus;
 
     const io = getIo();
@@ -258,7 +269,10 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response): Promis
       return;
     }
 
-    await pool.query('UPDATE rooms SET name = ?, last_activity_at = NOW() WHERE id = ?', [name, roomId]);
+    await pool.query('UPDATE rooms SET name = ?, last_activity_at = NOW() WHERE id = ?', [
+      name,
+      roomId,
+    ]);
 
     const [rooms] = await pool.query<RoomRow[]>(
       'SELECT id, code, created_by, created_at, status, name, filters, last_activity_at FROM rooms WHERE id = ?',
@@ -284,24 +298,43 @@ router.patch('/:id/filters', authMiddleware, async (req: Request, res: Response)
 
   // Validate filter shape to prevent arbitrary large payloads
   if (filters) {
-    const { genres, streamingServices, yearFrom, minRating, maxRuntime, language } = filters as Record<string, unknown>;
+    const { genres, streamingServices, yearFrom, minRating, maxRuntime, language } =
+      filters as Record<string, unknown>;
     if (genres !== undefined && (!Array.isArray(genres) || genres.length > 20)) {
-      res.status(400).json({ error: 'Maximal 20 Genres erlaubt' }); return;
+      res.status(400).json({ error: 'Maximal 20 Genres erlaubt' });
+      return;
     }
-    if (streamingServices !== undefined && (!Array.isArray(streamingServices) || streamingServices.length > 10)) {
-      res.status(400).json({ error: 'Maximal 10 Streaming-Dienste erlaubt' }); return;
+    if (
+      streamingServices !== undefined &&
+      (!Array.isArray(streamingServices) || streamingServices.length > 10)
+    ) {
+      res.status(400).json({ error: 'Maximal 10 Streaming-Dienste erlaubt' });
+      return;
     }
-    if (yearFrom !== undefined && (typeof yearFrom !== 'number' || yearFrom < 1900 || yearFrom > 2100)) {
-      res.status(400).json({ error: 'Ungueltige Jahresangabe' }); return;
+    if (
+      yearFrom !== undefined &&
+      (typeof yearFrom !== 'number' || yearFrom < 1900 || yearFrom > 2100)
+    ) {
+      res.status(400).json({ error: 'Ungueltige Jahresangabe' });
+      return;
     }
-    if (minRating !== undefined && (typeof minRating !== 'number' || minRating < 0 || minRating > 10)) {
-      res.status(400).json({ error: 'Bewertung muss zwischen 0 und 10 liegen' }); return;
+    if (
+      minRating !== undefined &&
+      (typeof minRating !== 'number' || minRating < 0 || minRating > 10)
+    ) {
+      res.status(400).json({ error: 'Bewertung muss zwischen 0 und 10 liegen' });
+      return;
     }
-    if (maxRuntime !== undefined && (typeof maxRuntime !== 'number' || maxRuntime < 1 || maxRuntime > 600)) {
-      res.status(400).json({ error: 'Ungueltige Laufzeit' }); return;
+    if (
+      maxRuntime !== undefined &&
+      (typeof maxRuntime !== 'number' || maxRuntime < 1 || maxRuntime > 600)
+    ) {
+      res.status(400).json({ error: 'Ungueltige Laufzeit' });
+      return;
     }
     if (language !== undefined && (typeof language !== 'string' || language.length > 5)) {
-      res.status(400).json({ error: 'Ungueltige Sprache' }); return;
+      res.status(400).json({ error: 'Ungueltige Sprache' });
+      return;
     }
   }
 
@@ -316,7 +349,10 @@ router.patch('/:id/filters', authMiddleware, async (req: Request, res: Response)
     }
 
     const filtersJson = filters ? JSON.stringify(filters) : null;
-    await pool.query('UPDATE rooms SET filters = ?, last_activity_at = NOW() WHERE id = ?', [filtersJson, roomId]);
+    await pool.query('UPDATE rooms SET filters = ?, last_activity_at = NOW() WHERE id = ?', [
+      filtersJson,
+      roomId,
+    ]);
 
     await generateRoomStack(roomId, filters || {});
 
@@ -380,13 +416,19 @@ router.delete('/:id/leave', authMiddleware, async (req: Request, res: Response):
         await pool.query('DELETE FROM rooms WHERE id = ?', [roomId]);
       } else {
         // Raum war genutzt (Partner war dabei) → archivieren
-        await pool.query('UPDATE rooms SET status = ?, last_activity_at = NOW() WHERE id = ?', ['dissolved', roomId]);
+        await pool.query('UPDATE rooms SET status = ?, last_activity_at = NOW() WHERE id = ?', [
+          'dissolved',
+          roomId,
+        ]);
       }
 
       const io = getIo();
       io.to(`room:${roomId}`).emit(SocketEvents.ROOM_DISSOLVED, { roomId });
     } else {
-      await pool.query('UPDATE rooms SET status = ?, last_activity_at = NOW() WHERE id = ?', ['waiting', roomId]);
+      await pool.query('UPDATE rooms SET status = ?, last_activity_at = NOW() WHERE id = ?', [
+        'waiting',
+        roomId,
+      ]);
 
       const io = getIo();
       io.to(`room:${roomId}`).emit(SocketEvents.PARTNER_LEFT, { userId });
@@ -401,60 +443,63 @@ router.delete('/:id/leave', authMiddleware, async (req: Request, res: Response):
 
 // DELETE /api/rooms/:id/archive — Raum aus eigener Archivliste löschen
 // Hard-Delete aus DB nur wenn beide User gelöscht haben
-router.delete('/:id/archive', authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const userId = (req as AuthRequest).user.userId;
-  const roomId = parseInt(req.params['id'], 10);
+router.delete(
+  '/:id/archive',
+  authMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = (req as AuthRequest).user.userId;
+    const roomId = parseInt(req.params['id'], 10);
 
-  if (isNaN(roomId)) {
-    res.status(400).json({ error: 'Ungueltige Room-ID' });
-    return;
-  }
-
-  try {
-    const [rooms] = await pool.query<RoomRow[]>(
-      'SELECT id, status FROM rooms WHERE id = ?',
-      [roomId],
-    );
-
-    if (rooms.length === 0) {
-      res.status(404).json({ error: 'Room nicht gefunden' });
+    if (isNaN(roomId)) {
+      res.status(400).json({ error: 'Ungueltige Room-ID' });
       return;
     }
 
-    if (rooms[0].status !== 'dissolved') {
-      res.status(400).json({ error: 'Room ist nicht archiviert' });
-      return;
+    try {
+      const [rooms] = await pool.query<RoomRow[]>('SELECT id, status FROM rooms WHERE id = ?', [
+        roomId,
+      ]);
+
+      if (rooms.length === 0) {
+        res.status(404).json({ error: 'Room nicht gefunden' });
+        return;
+      }
+
+      if (rooms[0].status !== 'dissolved') {
+        res.status(400).json({ error: 'Room ist nicht archiviert' });
+        return;
+      }
+
+      const [membership] = await pool.query<RowDataPacket[]>(
+        'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ? AND deleted_from_archive_at IS NULL',
+        [roomId, userId],
+      );
+      if (membership.length === 0) {
+        res.status(403).json({ error: 'Kein Mitglied oder bereits geloescht' });
+        return;
+      }
+
+      await pool.query(
+        'UPDATE room_members SET deleted_from_archive_at = NOW() WHERE room_id = ? AND user_id = ?',
+        [roomId, userId],
+      );
+
+      const [remaining] = await pool.query<CountRow[]>(
+        'SELECT COUNT(*) AS count FROM room_members WHERE room_id = ? AND deleted_from_archive_at IS NULL',
+        [roomId],
+      );
+
+      if (remaining[0].count === 0) {
+        await pool.query('DELETE FROM rooms WHERE id = ?', [roomId]);
+        logger.info({ roomId }, 'Room hard-deleted: both users deleted from archive');
+      }
+
+      res.json({ deleted: true });
+    } catch (err) {
+      logger.error({ err, userId, roomId }, 'Delete from archive error');
+      res.status(500).json({ error: 'Interner Serverfehler' });
     }
-
-    const [membership] = await pool.query<RowDataPacket[]>(
-      'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ? AND deleted_from_archive_at IS NULL',
-      [roomId, userId],
-    );
-    if (membership.length === 0) {
-      res.status(403).json({ error: 'Kein Mitglied oder bereits geloescht' });
-      return;
-    }
-
-    await pool.query(
-      'UPDATE room_members SET deleted_from_archive_at = NOW() WHERE room_id = ? AND user_id = ?',
-      [roomId, userId],
-    );
-
-    const [remaining] = await pool.query<CountRow[]>(
-      'SELECT COUNT(*) AS count FROM room_members WHERE room_id = ? AND deleted_from_archive_at IS NULL',
-      [roomId],
-    );
-
-    if (remaining[0].count === 0) {
-      await pool.query('DELETE FROM rooms WHERE id = ?', [roomId]);
-      logger.info({ roomId }, 'Room hard-deleted: both users deleted from archive');
-    }
-
-    res.json({ deleted: true });
-  } catch (err) {
-    logger.error({ err, userId, roomId }, 'Delete from archive error');
-    res.status(500).json({ error: 'Interner Serverfehler' });
-  }
-});
+  },
+);
 
 export default router;

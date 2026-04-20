@@ -16,10 +16,7 @@ const transporter = nodemailer.createTransport({
  * Sends a password-reset e-mail containing a deep-link the user can tap in
  * the Watchd iOS app (watchd://reset-password?token=…).
  */
-export async function sendPasswordResetEmail(
-  to: string,
-  resetToken: string,
-): Promise<void> {
+export async function sendPasswordResetEmail(to: string, resetToken: string): Promise<void> {
   // Universal Link — iOS intercepts this and opens the app directly when installed.
   // Falls back to the /reset-password HTML page when the app is absent.
   const deepLink = `${config.appUrl}/reset-password?token=${resetToken}`;
@@ -69,10 +66,7 @@ export async function sendPasswordResetEmail(
 
   // In development without SMTP config, log instead of sending
   if (!config.smtp.host) {
-    logger.info(
-      { to, deepLink },
-      'SMTP not configured – password reset link (dev only)',
-    );
+    logger.info({ to, deepLink }, 'SMTP not configured – password reset link (dev only)');
     return;
   }
 

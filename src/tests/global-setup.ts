@@ -22,18 +22,29 @@ export default async function globalSetup(): Promise<void> {
 
   let dbConn: mysql.Connection;
   try {
-    dbConn = await mysql.createConnection({ host, port, user, password, database, multipleStatements: true });
+    dbConn = await mysql.createConnection({
+      host,
+      port,
+      user,
+      password,
+      database,
+      multipleStatements: true,
+    });
   } catch (err) {
     const code = (err as { code?: string }).code;
-    if (code === 'ER_ACCESS_DENIED_ERROR' || code === 'ER_BAD_DB_ERROR' || code === 'ER_DBACCESS_DENIED_ERROR') {
+    if (
+      code === 'ER_ACCESS_DENIED_ERROR' ||
+      code === 'ER_BAD_DB_ERROR' ||
+      code === 'ER_DBACCESS_DENIED_ERROR'
+    ) {
       throw new Error(
         `Cannot connect to test DB as ${user}@${host}/${database}. One-time bootstrap required:\n\n` +
-        `  sudo mariadb <<'SQL'\n` +
-        `  CREATE DATABASE IF NOT EXISTS ${database} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\n` +
-        `  CREATE USER IF NOT EXISTS '${user}'@'localhost' IDENTIFIED BY '${password}';\n` +
-        `  GRANT ALL PRIVILEGES ON ${database}.* TO '${user}'@'localhost';\n` +
-        `  FLUSH PRIVILEGES;\n` +
-        `  SQL\n\nOriginal error: ${(err as Error).message}`,
+          `  sudo mariadb <<'SQL'\n` +
+          `  CREATE DATABASE IF NOT EXISTS ${database} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\n` +
+          `  CREATE USER IF NOT EXISTS '${user}'@'localhost' IDENTIFIED BY '${password}';\n` +
+          `  GRANT ALL PRIVILEGES ON ${database}.* TO '${user}'@'localhost';\n` +
+          `  FLUSH PRIVILEGES;\n` +
+          `  SQL\n\nOriginal error: ${(err as Error).message}`,
       );
     }
     throw err;

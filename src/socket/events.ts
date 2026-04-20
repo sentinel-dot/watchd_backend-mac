@@ -2,7 +2,7 @@ export const SocketEvents = {
   // Client -> Server
   JOIN: 'join',
   DISCONNECT: 'disconnect',
-  
+
   // Server -> Client
   JOINED: 'joined',
   ERROR: 'error',
@@ -13,4 +13,4 @@ export const SocketEvents = {
   FILTERS_UPDATED: 'filters_updated',
 } as const;
 
-export type SocketEventName = typeof SocketEvents[keyof typeof SocketEvents];
+export type SocketEventName = (typeof SocketEvents)[keyof typeof SocketEvents];
