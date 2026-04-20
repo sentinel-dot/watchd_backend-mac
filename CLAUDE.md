@@ -10,7 +10,7 @@ Tinder-style Movie-Matching-App: zwei User swipen in einem gemeinsamen "Room" au
 
 ### Backend (`watchd_backend-mac/`)
 - **Framework**: Express + Socket.io
-- **Sprache**: TypeScript (Node.js)
+- **Sprache**: TypeScript (Node.js 22 via `.nvmrc`, `engines.node >=22`, CI auf Node 22)
 - **Datenbank**: MySQL (mysql2 Pool, 10 Connections, UTC timezone)
 - **Auth**: JWT — Access-Token (kurz) + Refresh-Rotation mit theft detection via `family_id`
 - **Push**: APNs via `@parse/node-apn` (lazy-initialized beim ersten Aufruf)

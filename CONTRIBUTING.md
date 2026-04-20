@@ -189,7 +189,7 @@ Der Remote-Branch auf GitHub wird beim Merge automatisch gelöscht (falls du „
 Die Datei [.github/workflows/test.yml](./.github/workflows/test.yml) definiert den Workflow. Aktuell:
 
 - **Trigger**: jeder Push auf `main` + jeder PR (egal welcher Branch)
-- **Environment**: Ubuntu + Node 20 + MySQL 8 als Service-Container
+- **Environment**: Ubuntu + Node 22 + MySQL 8 als Service-Container
 - **Schritte**:
   1. Repo auschecken
   2. Node + npm-Cache einrichten
