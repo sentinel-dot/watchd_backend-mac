@@ -164,6 +164,139 @@ describe('DELETE /api/rooms/:id/archive', () => {
   });
 });
 
+describe('POST /api/rooms/join — rejoin', () => {
+  it('reactivates an inactive member and emits partner_joined', async () => {
+    const alice = await createUser(agent, { email: 'a-rejoin@example.com' });
+    const bob = await createUser(agent, { email: 'b-rejoin@example.com' });
+    const room = await createRoom(agent, alice.accessToken);
+    await joinRoom(agent, bob.accessToken, room.code);
+    await agent
+      .delete(`/api/rooms/${room.id}/leave`)
+      .set('Authorization', `Bearer ${bob.accessToken}`);
+
+    const [before] = await pool.query<(RowDataPacket & { is_active: number })[]>(
+      'SELECT is_active FROM room_members WHERE room_id = ? AND user_id = ?',
+      [room.id, bob.userId],
+    );
+    expect(before[0].is_active).toBe(0);
+
+    const res = await agent
+      .post('/api/rooms/join')
+      .set('Authorization', `Bearer ${bob.accessToken}`)
+      .send({ code: room.code });
+
+    expect(res.status).toBe(200);
+    expect(res.body.room.status).toBe('active');
+
+    const [after] = await pool.query<(RowDataPacket & { is_active: number })[]>(
+      'SELECT is_active FROM room_members WHERE room_id = ? AND user_id = ?',
+      [room.id, bob.userId],
+    );
+    expect(after[0].is_active).toBe(1);
+
+    expect(__io.to).toHaveBeenCalledWith(`room:${room.id}`);
+    expect(__io.to(`room:${room.id}`).emit).toHaveBeenCalledWith(
+      'partner_joined',
+      expect.objectContaining({ userId: bob.userId }),
+    );
+  });
+});
+
+describe('GET /api/rooms', () => {
+  it('lists only rooms the user is a member of', async () => {
+    const alice = await createUser(agent, { email: 'a-list@example.com' });
+    const bob = await createUser(agent, { email: 'b-list@example.com' });
+    const aliceRoom = await createRoom(agent, alice.accessToken, { name: 'Alice Room' });
+    await createRoom(agent, bob.accessToken, { name: 'Bob Room' });
+
+    const res = await agent.get('/api/rooms').set('Authorization', `Bearer ${alice.accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.rooms).toHaveLength(1);
+    expect(res.body.rooms[0].id).toBe(aliceRoom.id);
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await agent.get('/api/rooms');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('GET /api/rooms/:id', () => {
+  it('returns room details with members for a member', async () => {
+    const alice = await createUser(agent, { email: 'a-get@example.com' });
+    const bob = await createUser(agent, { email: 'b-get@example.com' });
+    const room = await createRoom(agent, alice.accessToken);
+    await joinRoom(agent, bob.accessToken, room.code);
+
+    const res = await agent.get(`/api/rooms/${room.id}`).set('Authorization', `Bearer ${alice.accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.room.id).toBe(room.id);
+    expect(res.body.members).toHaveLength(2);
+    const ids = res.body.members.map((m: { user_id: number }) => m.user_id).sort();
+    expect(ids).toEqual([alice.userId, bob.userId].sort());
+  });
+
+  it('returns 403 when the user is not a member', async () => {
+    const alice = await createUser(agent, { email: 'a-forbid@example.com' });
+    const outsider = await createUser(agent, { email: 'o-forbid@example.com' });
+    const room = await createRoom(agent, alice.accessToken);
+
+    const res = await agent
+      .get(`/api/rooms/${room.id}`)
+      .set('Authorization', `Bearer ${outsider.accessToken}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 404 for an unknown room id', async () => {
+    const user = await createUser(agent, { email: 'nf-get@example.com' });
+    const res = await agent.get('/api/rooms/999999').set('Authorization', `Bearer ${user.accessToken}`);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('PATCH /api/rooms/:id', () => {
+  it('renames the room for a member', async () => {
+    const user = await createUser(agent, { email: 'a-rename@example.com' });
+    const room = await createRoom(agent, user.accessToken, { name: 'Old' });
+
+    const res = await agent
+      .patch(`/api/rooms/${room.id}`)
+      .set('Authorization', `Bearer ${user.accessToken}`)
+      .send({ name: 'Renamed' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.room.name).toBe('Renamed');
+  });
+
+  it('returns 403 when a non-member tries to rename', async () => {
+    const alice = await createUser(agent, { email: 'a-ren-forbid@example.com' });
+    const outsider = await createUser(agent, { email: 'o-ren-forbid@example.com' });
+    const room = await createRoom(agent, alice.accessToken);
+
+    const res = await agent
+      .patch(`/api/rooms/${room.id}`)
+      .set('Authorization', `Bearer ${outsider.accessToken}`)
+      .send({ name: 'Hijack' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 400 for empty name', async () => {
+    const user = await createUser(agent, { email: 'a-ren-empty@example.com' });
+    const room = await createRoom(agent, user.accessToken);
+
+    const res = await agent
+      .patch(`/api/rooms/${room.id}`)
+      .set('Authorization', `Bearer ${user.accessToken}`)
+      .send({ name: '' });
+
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('PATCH /api/rooms/:id/filters', () => {
   it('updates filters and emits filters_updated socket event', async () => {
     const user = await createUser(agent);

@@ -17,7 +17,7 @@ Tinder-style Movie-Matching-App: zwei User swipen in einem gemeinsamen "Room" au
 - **Mail**: Nodemailer; SMTP oder Console-Fallback wenn `SMTP_HOST` leer
 - **Cache**: LRU (2000 Einträge, 1h TTL) für TMDB; 1h pro `movieId` für JustWatch
 - **Deployment**: Railway — `https://watchd.up.railway.app` (`npm run build` → `npm start`, kein Dockerfile)
-- **Testing**: Vitest + Supertest gegen echte `watchd_test`-DB (Socket.io, APNs, Mail, TMDB, JustWatch, room-stack gemockt). `pool: 'threads'`, `fileParallelism: false`, `isolate: false` — single Worker teilt Module (inkl. DB-Pool + httpServer) über alle Files. `setup.ts` initialisiert Server einmalig (idempotentes `beforeAll`, kein `afterAll` — Prozess-Exit räumt auf). Mock-Factories sind **idempotent** (Instanzen in `globalThis.__watchdMocks` gecached) — sonst erzeugt jede Factory-Ausführung pro File frische `vi.fn()`s und entkoppelt sie vom einmalig erzeugten App-Instanz → flaky Socket/Mail-Spy-Tests je nach File-Reihenfolge. `createApp({ skipRateLimiter: true })` für Tests. Design: echte Test-DB statt Mock (Migrations-Parität mit Prod); nur externe / Side-effect-Module gemockt. **Nicht getestet**: `token-cleanup.ts` (scheduled, kein deterministischer Testpunkt), APNs/Mail/TMDB/JustWatch (gemockt — Unit-Tests darüber bringen keinen Mehrwert), iOS (kein MVP-ROI), E2E, echte Concurrency (Matchmaking-Test ist sequentiell und prüft `INSERT IGNORE`, nicht parallele Races).
+- **Testing**: Vitest + Supertest gegen echte `watchd_test`-DB (Socket.io, APNs, Mail, TMDB, JustWatch, room-stack gemockt — `appendRoomStack` wird per `vi.importActual` in `room-stack-append.integration.test.ts` real gegen DB + gemocktes `global.fetch` getestet). `pool: 'threads'`, `fileParallelism: false`, `isolate: false` — single Worker teilt Module (inkl. DB-Pool + httpServer) über alle Files. `setup.ts` initialisiert Server einmalig (idempotentes `beforeAll`, kein `afterAll` — Prozess-Exit räumt auf). Mock-Factories sind **idempotent** (Instanzen in `globalThis.__watchdMocks` gecached) — sonst erzeugt jede Factory-Ausführung pro File frische `vi.fn()`s und entkoppelt sie vom einmalig erzeugten App-Instanz → flaky Socket/Mail-Spy-Tests je nach File-Reihenfolge. `createApp({ skipRateLimiter: true })` für Tests. Design: echte Test-DB statt Mock (Migrations-Parität mit Prod); nur externe / Side-effect-Module gemockt. **Nicht getestet**: `token-cleanup.ts` (scheduled, kein deterministischer Testpunkt), APNs/Mail/TMDB/JustWatch (gemockt — Unit-Tests darüber bringen keinen Mehrwert), iOS (kein MVP-ROI), E2E, echte Concurrency (Matchmaking-Test ist sequentiell und prüft `INSERT IGNORE`, nicht parallele Races).
 
 ### iOS App (`watchd/`)
 - **Framework**: SwiftUI (iOS 16+, Xcode 16+)
@@ -87,7 +87,11 @@ watchd_backend-mac/src/
     │                     # seedStackMovie, seedSwipe, seedMatch
     ├── unit/             # auth.unit (decodeRefreshToken), middleware.unit,
     │                     # room-stack.unit (buildTmdbUrl)
-    └── integration/      # auth, swipes-matchmaking, rooms, movies, matches
+    └── integration/      # auth, swipes-matchmaking, rooms, movies, matches,
+                          # users (PATCH /me, device-token),
+                          # room-stack-append (Lazy-Refill: Lock, Page-Increment,
+                          # Exhausted-Flag, Dedup, Fehlerpfad — nutzt
+                          # vi.importActual + gemocktes global.fetch)
 
 watchd/watchd/
 ├── watchdApp.swift       # @main; deep link handling; environment objects: AuthViewModel, NetworkMonitor
