@@ -23,13 +23,14 @@ Prioritisierte Follow-up-Liste aus dem Infra-Gap-Report vom 2026-04-19. Fokus: w
 
 ## P1 - Hoch
 
-### Test-Coverage: Room-Stack Lazy Refill
-**Warum:** `appendRoomStack()`, das `stack_generating`-Lock und der `stack_exhausted`-Zustand sind ungetestet. Das ist die Refill-Logik, die produktiv am ehesten stillschweigend bricht - z.B. Lock bleibt haengen, keine Refills mehr, User sehen keine neuen Filme und niemand merkt's bis zur Support-Mail.
-**Effort:** ~60-90 min
-**Was konkret:** Integration-Test im `/test-integration`-Pattern. Szenarien:
-- Stack bei <= 10 ungeswipten Filmen -> Refill triggert, Lock wird gesetzt und wieder freigegeben
-- `stack_exhausted=true` -> Refill-Trigger blockiert
-- Lock-Konflikt (zwei parallele Requests) -> nur einer refillt, atomares Update
+### Test-Coverage: Refill-Trigger in Movie-Routes
+**Warum:** `appendRoomStack()` selbst ist inzwischen per Integrationstest abgedeckt (`src/tests/integration/room-stack-append.integration.test.ts`), aber die Route-seitige Trigger-Logik in `src/routes/movies.ts` ist noch nicht gezielt getestet. Genau dort entscheidet sich, ob der Lazy-Refill im laufenden Betrieb ueberhaupt zuverlaessig anspringt oder korrekt blockiert wird.
+**Effort:** ~45-75 min
+**Was konkret:** Integration-Tests fuer `GET /api/movies/feed` und/oder `GET /api/movies/rooms/:roomId/next-movie`:
+- bei <= 10 ungeswipten Filmen wird Refill angestossen
+- bei `stack_exhausted = true` wird kein Refill getriggert
+- bei Lock-Konflikt / parallelen Requests startet nur ein Request den Refill
+- optional: sicherstellen, dass der Request selbst normal antwortet, waehrend Refill im Hintergrund laeuft
 
 ### Operational Troubleshooting
 **Warum:** Deploy-Troubleshooting ist in CLAUDE.md dokumentiert, Code-Laufzeit-Fehler nicht ("Socket disconnectet staendig", "Match-Push doppelt", "room_stack bleibt leer trotz aktivem User"). Beim ersten Incident fehlt das Playbook.
