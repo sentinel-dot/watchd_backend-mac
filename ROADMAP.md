@@ -21,6 +21,8 @@ Prioritisierte Follow-up-Liste aus dem Infra-Gap-Report vom 2026-04-19. Fokus: w
 - Lazy-Refill-Trigger in Movie-Routes getestet (2026-04-20) - `movies.integration.test.ts` deckt `<=10` unseen, `stack_exhausted` und atomaren Lock bei Parallel-Requests ab
 - Operational-Troubleshooting-Playbook angelegt (2026-04-20) - `docs/troubleshooting.md` als Incident-Startpunkt fuer Runtime-Probleme
 - ESLint + Prettier eingerichtet (2026-04-20) - `eslint.config.mjs`, `.prettierrc.json`, `tsconfig.eslint.json`, `npm run lint|lint:fix|format|format:check`; CI prueft jetzt Linting, Formatting, Typecheck und Tests
+- iOS: APNs End-to-End Setup Doc angelegt (2026-04-20) - `watchd/docs/apns-end-to-end-setup.md` dokumentiert Apple-Portal -> Railway -> Xcode -> Device-Test
+- iOS: Signing / Provisioning Docs angelegt (2026-04-20) - `watchd/docs/signing-provisioning.md` dokumentiert Team ID, Bundle ID, Automatic Signing und Profile-Refresh
 
 ---
 
@@ -30,30 +32,11 @@ Prioritisierte Follow-up-Liste aus dem Infra-Gap-Report vom 2026-04-19. Fokus: w
 
 ## P2 - Mittel
 
-### iOS: APNs End-to-End Setup Doc
-
-**Warum:** Bei Cert-Rotation oder neuem Geraet vergisst du die 8-Schritt-Kette. Aktuell verstreut in CLAUDE.md (Xcode-Capability) und `.env.example` (base64).
-**Effort:** ~30 min
-**Was konkret:** Sektion in `watchd/CLAUDE.md` oder `watchd/docs/push-setup.md`:
-
-- Apple Developer Portal -> Key generieren (Capabilities anhaken: APNs)
-- Team-ID finden
-- `.p8` runterladen + base64-encode
-- In Railway als `APNS_PRIVATE_KEY` setzen
-- Xcode: Push Notifications Capability aktivieren -> `aps-environment` Entitlement pruefen
-- Sandbox vs Production: Key-Typ und `APNS_PRODUCTION` Env muessen matchen
-
 ### `download-icons` Script Context
 
 **Warum:** Trivial, aber unklar wann das Script laufen muss. Beim Setup? Bei neuen Streaming-Services? Nie wieder?
 **Effort:** ~5 min
 **Was konkret:** Ein-Absatz-Hinweis in README oder CLAUDE.md: "Einmalig beim ersten Setup. Danach nur wenn JustWatch neue Provider-IDs liefert oder fehlende Icons auffallen."
-
-### iOS: Signing / Provisioning Docs
-
-**Warum:** Bei Mac-Wechsel oder Bundle-ID-Aenderung fehlt der Kontext. Aktuell nur in deinem Kopf.
-**Effort:** ~20 min
-**Was konkret:** Sektion in `watchd/CLAUDE.md` oder `watchd/README.md`: Apple Dev Team ID, Bundle ID, aktive Capabilities, `.entitlements`-Datei-Status, wie Provisioning-Profile erneuert werden.
 
 ---
 
