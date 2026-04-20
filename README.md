@@ -8,7 +8,7 @@ Node.js/Express + Socket.io Backend für Watchd — eine Tinder-style Movie-Matc
 
 ## Voraussetzungen
 
-- **Node.js 20+** (getestet bis 23; Projekt nutzt `@types/node: ^20`)
+- **Node.js 22+** (`.nvmrc` ist auf `22` gepinnt; Projekt nutzt `@types/node: ^22`)
 - **MySQL 8+** oder **MariaDB 10.5+** (utf8mb4_unicode_ci)
 - **TMDB API Key** — v3 Key oder v4 Read Access Token ([themoviedb.org/settings/api](https://www.themoviedb.org/settings/api))
 
