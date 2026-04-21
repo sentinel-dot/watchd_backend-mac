@@ -62,6 +62,8 @@ Die Test-DB wird bei jedem `npm test`-Lauf via `src/tests/global-setup.ts` kompl
 
 ```bash
 npm run dev          # Hot-reload (ts-node-dev) auf Port 3000
+npm run lint         # ESLint
+npm run format:check # Prettier-Check ohne Änderungen
 npm run typecheck    # TypeScript prüfen (nach jeder Änderung!)
 npm test             # Vitest gegen watchd_test-DB
 npm run test:watch   # Watch-Mode
@@ -69,7 +71,7 @@ npm run build        # Compile → dist/
 npm start            # Production-Build starten
 ```
 
-**Nach Backend-Änderungen immer:** `npm run typecheck` + `npm test` (2× laufen lassen, Ergebnis muss identisch sein — Tests sind deterministisch konfiguriert, abweichende Pass-Counts sind ein Bug).
+**Nach Backend-Änderungen immer:** `npm run lint && npm run format:check && npm run typecheck && npm test` — genau das läuft auch in CI. Tests 2× laufen lassen, Ergebnis muss identisch sein (abweichende Pass-Counts sind ein Bug).
 
 ---
 

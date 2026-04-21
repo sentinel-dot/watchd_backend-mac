@@ -231,8 +231,8 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
        FROM rooms r
        JOIN room_members rm ON rm.room_id = r.id
        WHERE rm.user_id = ?
-         AND rm.is_active = true
          AND rm.deleted_from_archive_at IS NULL
+         AND (rm.is_active = true OR r.status = 'dissolved')
        ORDER BY r.last_activity_at DESC`,
       [userId],
     );

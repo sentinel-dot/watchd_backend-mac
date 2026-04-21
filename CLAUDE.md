@@ -147,6 +147,8 @@ Views/                         # alle SwiftUI-Screens (Xcode 16 erfasst neue Dat
 ├── RoomFiltersView.swift      # Filter-Editor für bestehenden Room → Stack neu generieren
 ├── ArchivedRoomsView.swift    # Liste + Hard-Delete archivierter Rooms
 ├── UpgradeAccountView.swift   # Guest → Vollkonto (Email + Password hinzufügen)
+├── GuestUpgradePromptSheet.swift # Sheet nach N Matches als Gast — "Jetzt sichern" /
+│                                  # "Später"; ruft UpgradeAccountView bei Confirm
 ├── PasswordResetViews.swift   # Forgot-Password-Request + Reset via Deep-Link-Token
 ├── LegalView.swift            # Datenschutz / Impressum / AGB
 ├── NativeTextField.swift      # UIViewRepresentable Wrapper für bessere Keyboard-Handles
@@ -307,7 +309,7 @@ Für Runtime-/Codepfad-Incidents siehe `docs/troubleshooting.md`.
 | `POST`   | `/api/users/me/device-token`              | APNs Device-Token registrieren                                                                                      |
 | `POST`   | `/api/rooms`                              | Room erstellen (optional: name, filters) → room_stack generieren                                                    |
 | `POST`   | `/api/rooms/join`                         | Beitreten via 6-char Code (max 2 Members)                                                                           |
-| `GET`    | `/api/rooms`                              | Aktive Rooms des Users auflisten                                                                                    |
+| `GET`    | `/api/rooms`                              | Rooms des Users: `is_active = true` **ODER** `status = 'dissolved'` (Client filtert aktiv/archiviert per `status`)   |
 | `GET`    | `/api/rooms/:id`                          | Room-Details + Member-Liste                                                                                         |
 | `PATCH`  | `/api/rooms/:id`                          | Room umbenennen                                                                                                     |
 | `PATCH`  | `/api/rooms/:id/filters`                  | Filter updaten → room_stack neu generieren + `filters_updated` emittieren                                           |
@@ -336,7 +338,7 @@ Für Runtime-/Codepfad-Incidents siehe `docs/troubleshooting.md`.
 - `active` → `waiting` (ein Member verlässt)
 - `waiting`/`active` → `dissolved` (letzter Member verlässt nach Nutzung)
 - Nie genutzte Rooms werden sofort hard-deleted
-- `GET /api/rooms` filtert nach `room_members.is_active = true` — wer verlassen hat, sieht den Raum nicht mehr in der aktiven Liste (taucht erst im Archiv auf, wenn er dissolved ist)
+- `GET /api/rooms` gibt alle Rooms zurück, bei denen der User entweder noch `is_active = true` ist **oder** der Raum bereits `dissolved` ist (und nicht aus dem Archiv gelöscht). Wer zuerst verlässt, sieht den Raum bis zum Dissolve nicht — sobald der Partner auch geht, taucht er im eigenen Archiv auf. `is_active = true` allein würde Dissolve-Sichtbarkeit für den Erstverlasser killen (Bug vor `8dd99a8`).
 
 **JWT-Strategie:**
 Short-lived Access-Tokens + Refresh-Token-Rotation. Wiederverwendung eines revoked Tokens innerhalb derselben `family_id` invalidiert die gesamte Familie (theft detection).
@@ -359,6 +361,10 @@ App Launch → ContentView
     │   ├── Right-Swipe → Matchmaking → Socket.io match → MatchView Modal
     │   │   └── MatchView: Konfetti + Streaming-Optionen
     │   │       ├── "Weiter swipen" → zurück zur SwipeView
+    │   │       │   └── (Gast, ≥3 Matches, Cooldown abgelaufen)
+    │   │       │       → GuestUpgradePromptSheet
+    │   │       │         ├── "Jetzt sichern" → UpgradeAccountView
+    │   │       │         └── "Später" → zurück zur SwipeView
     │   │       └── "Alle Matches" → MatchesListView
     │   ├── Herz-Button (Karte) → Favorit togglen
     │   ├── Toolbar-Herz → MatchesListView → MovieDetailView
@@ -369,6 +375,10 @@ App Launch → ContentView
     ├── Favoriten → FavoritesListView → MovieDetailView
     ├── Archivierte Rooms → ArchivedRoomsView
     └── Einstellungen: Name, Upgrade (Guest), Legal, Logout
+        └── Logout als Gast → 3-Button-Alert:
+            ├── "Konto sichern" → UpgradeAccountView
+            ├── "Trotzdem abmelden" → logout (destructive)
+            └── "Abbrechen"
 
 Deep Links:
   watchd://join/ROOMCODE              → auto-join (oder Code für Post-Login queuen)

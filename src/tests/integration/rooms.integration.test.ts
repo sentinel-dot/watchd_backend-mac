@@ -249,6 +249,33 @@ describe('GET /api/rooms', () => {
     expect(bobList.body.rooms[0].id).toBe(room.id);
   });
 
+  it('surfaces dissolved rooms for a user who left first, once the partner also leaves', async () => {
+    const alice = await createUser(agent, { email: 'a-archsurface@example.com' });
+    const bob = await createUser(agent, { email: 'b-archsurface@example.com' });
+    const room = await createRoom(agent, alice.accessToken, { name: 'Archive Me' });
+    await joinRoom(agent, bob.accessToken, room.code);
+
+    await agent
+      .delete(`/api/rooms/${room.id}/leave`)
+      .set('Authorization', `Bearer ${alice.accessToken}`);
+
+    const aliceDuring = await agent
+      .get('/api/rooms')
+      .set('Authorization', `Bearer ${alice.accessToken}`);
+    expect(aliceDuring.body.rooms).toHaveLength(0);
+
+    await agent
+      .delete(`/api/rooms/${room.id}/leave`)
+      .set('Authorization', `Bearer ${bob.accessToken}`);
+
+    const aliceAfter = await agent
+      .get('/api/rooms')
+      .set('Authorization', `Bearer ${alice.accessToken}`);
+    expect(aliceAfter.body.rooms).toHaveLength(1);
+    expect(aliceAfter.body.rooms[0].id).toBe(room.id);
+    expect(aliceAfter.body.rooms[0].status).toBe('dissolved');
+  });
+
   it('returns 401 without auth', async () => {
     const res = await agent.get('/api/rooms');
     expect(res.status).toBe(401);

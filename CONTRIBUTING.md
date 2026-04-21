@@ -28,7 +28,7 @@ Technisch: du bist als Repo-Admin in der Bypass-Liste der Ruleset-Regel eingetra
 cd watchd_backend-mac
 git checkout main && git pull
 git checkout -b fix/kurze-beschreibung
-# ... arbeiten + lokal: npm run typecheck && npm test
+# ... arbeiten + lokal: npm run lint && npm run format:check && npm run typecheck && npm test
 git add <files>
 git commit -m "fix: was sich ändert"
 git push -u origin fix/kurze-beschreibung
@@ -123,11 +123,13 @@ Normal arbeiten. `git status` zeigt, welche Dateien geändert sind.
 ### 4. Lokal prüfen (bevor du committest)
 
 ```bash
+npm run lint          # ESLint muss grün sein
+npm run format:check  # Prettier-Formatting muss stimmen
 npm run typecheck     # TypeScript muss grün sein
 npm test              # zweimal laufen lassen, beide male identisch
 ```
 
-Wenn etwas rot ist, fixen bevor du pushst — sonst wird CI auf GitHub die gleiche Fehlermeldung geben und dich nicht mergen lassen.
+Wenn etwas rot ist, fixen bevor du pushst — sonst wird CI auf GitHub die gleiche Fehlermeldung geben und dich nicht mergen lassen. Formatting-Fehler lassen sich mit `npm run format` automatisch fixen, Lint-Fehler teils mit `npm run lint:fix`.
 
 ### 5. Committen
 
@@ -200,8 +202,10 @@ Die Datei [.github/workflows/test.yml](./.github/workflows/test.yml) definiert d
   1. Repo auschecken
   2. Node + npm-Cache einrichten
   3. `npm ci` (Dependencies deterministisch installieren)
-  4. `npm run typecheck`
-  5. `npm test` (gegen frisch aufgesetzte `watchd_test`-DB)
+  4. `npm run lint`
+  5. `npm run format:check`
+  6. `npm run typecheck`
+  7. `npm test` (gegen frisch aufgesetzte `watchd_test`-DB)
 - **Dauer**: ~60–90 Sekunden
 - **Parallelität**: neuer Push auf denselben Branch cancelt den laufenden CI-Run
 
