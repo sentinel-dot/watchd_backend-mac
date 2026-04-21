@@ -309,7 +309,7 @@ Für Runtime-/Codepfad-Incidents siehe `docs/troubleshooting.md`.
 | `POST`   | `/api/users/me/device-token`              | APNs Device-Token registrieren                                                                                      |
 | `POST`   | `/api/rooms`                              | Room erstellen (optional: name, filters) → room_stack generieren                                                    |
 | `POST`   | `/api/rooms/join`                         | Beitreten via 6-char Code (max 2 Members)                                                                           |
-| `GET`    | `/api/rooms`                              | Rooms des Users: `is_active = true` **ODER** `status = 'dissolved'` (Client filtert aktiv/archiviert per `status`)   |
+| `GET`    | `/api/rooms`                              | Rooms des Users: `is_active = true` **ODER** `status = 'dissolved'` (Client filtert aktiv/archiviert per `status`)  |
 | `GET`    | `/api/rooms/:id`                          | Room-Details + Member-Liste                                                                                         |
 | `PATCH`  | `/api/rooms/:id`                          | Room umbenennen                                                                                                     |
 | `PATCH`  | `/api/rooms/:id/filters`                  | Filter updaten → room_stack neu generieren + `filters_updated` emittieren                                           |
