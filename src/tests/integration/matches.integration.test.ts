@@ -2,7 +2,27 @@ import { describe, it, expect } from 'vitest';
 import { agent } from '../setup';
 import { pool } from '../../db/connection';
 import { createUser, createRoom, joinRoom, seedMatch } from '../helpers';
-import type { RowDataPacket } from 'mysql2';
+import type { RowDataPacket, ResultSetHeader } from 'mysql2';
+
+// MySQL TIMESTAMP has 1-second precision by default, so back-to-back seedMatch
+// calls can collide and make ORDER BY matched_at DESC non-deterministic. These
+// helpers insert with an explicit timestamp so pagination/ordering tests are
+// stable.
+async function seedMatchAt(roomId: number, movieId: number, matchedAt: string): Promise<number> {
+  const [res] = await pool.query<ResultSetHeader>(
+    'INSERT INTO matches (room_id, movie_id, matched_at) VALUES (?, ?, ?)',
+    [roomId, movieId, matchedAt],
+  );
+  return res.insertId;
+}
+
+async function seedFavoriteAt(userId: number, movieId: number, createdAt: string): Promise<number> {
+  const [res] = await pool.query<ResultSetHeader>(
+    'INSERT INTO favorites (user_id, movie_id, created_at) VALUES (?, ?, ?)',
+    [userId, movieId, createdAt],
+  );
+  return res.insertId;
+}
 
 describe('GET /api/matches/:roomId', () => {
   it('returns paginated matches with watched flag', async () => {
@@ -20,6 +40,64 @@ describe('GET /api/matches/:roomId', () => {
     expect(res.body.matches).toHaveLength(2);
     expect(res.body.matches[0].watched).toBe(false);
     expect(res.body.pagination.total).toBe(2);
+  });
+
+  it('paginates across two pages without overlap and reports hasMore correctly', async () => {
+    const alice = await createUser(agent, { email: 'a-matchpage@example.com' });
+    const bob = await createUser(agent, { email: 'b-matchpage@example.com' });
+    const room = await createRoom(agent, alice.accessToken);
+    await joinRoom(agent, bob.accessToken, room.code);
+    await seedMatchAt(room.id, 11001, '2026-04-01 10:00:00');
+    await seedMatchAt(room.id, 11002, '2026-04-01 10:00:01');
+    await seedMatchAt(room.id, 11003, '2026-04-01 10:00:02');
+
+    const page1 = await agent
+      .get(`/api/matches/${room.id}?limit=2&offset=0`)
+      .set('Authorization', `Bearer ${alice.accessToken}`);
+    expect(page1.status).toBe(200);
+    expect(page1.body.matches.map((m: { movie: { id: number } }) => m.movie.id)).toEqual([
+      11003, 11002,
+    ]);
+    expect(page1.body.pagination).toMatchObject({ total: 3, limit: 2, offset: 0, hasMore: true });
+
+    const page2 = await agent
+      .get(`/api/matches/${room.id}?limit=2&offset=2`)
+      .set('Authorization', `Bearer ${alice.accessToken}`);
+    expect(page2.status).toBe(200);
+    expect(page2.body.matches.map((m: { movie: { id: number } }) => m.movie.id)).toEqual([11001]);
+    expect(page2.body.pagination).toMatchObject({ total: 3, limit: 2, offset: 2, hasMore: false });
+
+    const allIds = [...page1.body.matches, ...page2.body.matches].map(
+      (m: { movie: { id: number } }) => m.movie.id,
+    );
+    expect(new Set(allIds).size).toBe(3);
+  });
+
+  it('clamps limit above 50 to 50', async () => {
+    const alice = await createUser(agent, { email: 'a-matchclamp@example.com' });
+    const bob = await createUser(agent, { email: 'b-matchclamp@example.com' });
+    const room = await createRoom(agent, alice.accessToken);
+    await joinRoom(agent, bob.accessToken, room.code);
+    await seedMatch(room.id, 12001);
+
+    const res = await agent
+      .get(`/api/matches/${room.id}?limit=999`)
+      .set('Authorization', `Bearer ${alice.accessToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.pagination.limit).toBe(50);
+  });
+
+  it('returns 403 when the user is not a room member', async () => {
+    const alice = await createUser(agent, { email: 'a-match403@example.com' });
+    const bob = await createUser(agent, { email: 'b-match403@example.com' });
+    const outsider = await createUser(agent, { email: 'out-match403@example.com' });
+    const room = await createRoom(agent, alice.accessToken);
+    await joinRoom(agent, bob.accessToken, room.code);
+
+    const res = await agent
+      .get(`/api/matches/${room.id}`)
+      .set('Authorization', `Bearer ${outsider.accessToken}`);
+    expect(res.status).toBe(403);
   });
 });
 
@@ -128,5 +206,28 @@ describe('GET /api/matches/favorites/list', () => {
     expect(res.status).toBe(200);
     expect(res.body.favorites).toHaveLength(3);
     expect(res.body.pagination.total).toBe(3);
+  });
+
+  it('paginates favorites across two pages ordered by created_at DESC without overlap', async () => {
+    const user = await createUser(agent, { email: 'fav-page@example.com' });
+    await seedFavoriteAt(user.userId, 60001, '2026-04-01 10:00:00');
+    await seedFavoriteAt(user.userId, 60002, '2026-04-01 10:00:01');
+    await seedFavoriteAt(user.userId, 60003, '2026-04-01 10:00:02');
+
+    const page1 = await agent
+      .get('/api/matches/favorites/list?limit=2&offset=0')
+      .set('Authorization', `Bearer ${user.accessToken}`);
+    expect(page1.status).toBe(200);
+    expect(page1.body.favorites.map((f: { movie: { id: number } }) => f.movie.id)).toEqual([
+      60003, 60002,
+    ]);
+    expect(page1.body.pagination).toMatchObject({ total: 3, limit: 2, offset: 0, hasMore: true });
+
+    const page2 = await agent
+      .get('/api/matches/favorites/list?limit=2&offset=2')
+      .set('Authorization', `Bearer ${user.accessToken}`);
+    expect(page2.status).toBe(200);
+    expect(page2.body.favorites.map((f: { movie: { id: number } }) => f.movie.id)).toEqual([60001]);
+    expect(page2.body.pagination).toMatchObject({ total: 3, limit: 2, offset: 2, hasMore: false });
   });
 });

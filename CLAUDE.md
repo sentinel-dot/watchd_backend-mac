@@ -19,7 +19,7 @@ Tinder-style Movie-Matching-App: zwei User swipen in einem gemeinsamen "Room" au
 - **Cache**: LRU (2000 Einträge, 1h TTL) für TMDB; 1h pro `movieId` für JustWatch
 - **Code-Quality**: ESLint (Flat Config + `typescript-eslint`) + Prettier; CI prüft `lint`, `format:check`, `typecheck`, `test`
 - **Deployment**: Railway — `https://watchd.up.railway.app` (`npm run build` → `npm start`, kein Dockerfile)
-- **Testing**: Vitest + Supertest gegen echte `watchd_test`-DB (Socket.io, APNs, Mail, TMDB, JustWatch, room-stack gemockt — `appendRoomStack` wird per `vi.importActual` in `room-stack-append.integration.test.ts` real gegen DB + gemocktes `global.fetch` getestet; `movies.integration.test.ts` sichert den Lazy-Refill-Trigger in den Movie-Routes mit gemocktem `appendRoomStack` ab: `<=10` unseen, `stack_exhausted`, atomarer Lock bei Parallel-Requests). `pool: 'threads'`, `fileParallelism: false`, `isolate: false` — single Worker teilt Module (inkl. DB-Pool + httpServer) über alle Files. `setup.ts` initialisiert Server einmalig (idempotentes `beforeAll`, kein `afterAll` — Prozess-Exit räumt auf). Mock-Factories sind **idempotent** (Instanzen in `globalThis.__watchdMocks` gecached) — sonst erzeugt jede Factory-Ausführung pro File frische `vi.fn()`s und entkoppelt sie vom einmalig erzeugten App-Instanz → flaky Socket/Mail-Spy-Tests je nach File-Reihenfolge. `createApp({ skipRateLimiter: true })` für Tests. Design: echte Test-DB statt Mock (Migrations-Parität mit Prod); nur externe / Side-effect-Module gemockt. **Nicht getestet**: `token-cleanup.ts` (scheduled, kein deterministischer Testpunkt), APNs/Mail/TMDB/JustWatch (gemockt — Unit-Tests darüber bringen keinen Mehrwert), iOS (kein MVP-ROI), E2E, echte Concurrency jenseits der abgesicherten `stack_generating`-/`INSERT IGNORE`-Pfade.
+- **Testing**: Vitest + Supertest gegen echte `watchd_test`-DB (Socket.io, APNs, Mail, TMDB, JustWatch, room-stack gemockt — `appendRoomStack` wird per `vi.importActual` in `room-stack-append.integration.test.ts` real gegen DB + gemocktes `global.fetch` getestet, `generateRoomStack` analog in `room-stack-generate.integration.test.ts` (Happy Path / Regen-Wipe / Exhausted / Fehlerpropagation); `movies.integration.test.ts` sichert den Lazy-Refill-Trigger in den Movie-Routes mit gemocktem `appendRoomStack` ab: `<=10` unseen, `stack_exhausted`, atomarer Lock bei Parallel-Requests. `socket.integration.test.ts` testet den echten `initSocket` (JWT-Verify + Room-Membership) via `vi.importActual` auf einem dedizierten httpServer + `socket.io-client` — der in `setup.ts` gestartete Shared-Server bleibt ohne Socket-Attachment). `pool: 'threads'`, `fileParallelism: false`, `isolate: false` — single Worker teilt Module (inkl. DB-Pool + httpServer) über alle Files. `setup.ts` initialisiert Server einmalig (idempotentes `beforeAll`, kein `afterAll` — Prozess-Exit räumt auf). Mock-Factories sind **idempotent** (Instanzen in `globalThis.__watchdMocks` gecached) — sonst erzeugt jede Factory-Ausführung pro File frische `vi.fn()`s und entkoppelt sie vom einmalig erzeugten App-Instanz → flaky Socket/Mail-Spy-Tests je nach File-Reihenfolge. `createApp({ skipRateLimiter: true })` für Tests. Design: echte Test-DB statt Mock (Migrations-Parität mit Prod); nur externe / Side-effect-Module gemockt. **Nicht getestet**: `token-cleanup.ts` (scheduled, kein deterministischer Testpunkt), APNs/Mail/TMDB/JustWatch (gemockt — Unit-Tests darüber bringen keinen Mehrwert), iOS (kein MVP-ROI), E2E, echte Concurrency jenseits der abgesicherten `stack_generating`-/`INSERT IGNORE`-Pfade.
 
 ### iOS App (`watchd/`)
 
@@ -91,11 +91,18 @@ watchd_backend-mac/src/
     ├── unit/             # auth.unit (decodeRefreshToken), middleware.unit,
     │                     # room-stack.unit (buildTmdbUrl)
     └── integration/      # auth, swipes-matchmaking, rooms, movies
-                          # (Pagination, Swipe-Filter, Lazy-Refill-Trigger), matches,
-                          # users (PATCH /me, device-token),
+                          # (Pagination, Swipe-Filter, Lazy-Refill-Trigger),
+                          # matches (watched-Toggle, Favorites, Offset-Pagination
+                          # mit expliziten Timestamps, Limit-Clamp auf 50,
+                          # Member-403), users (PATCH /me, device-token),
                           # room-stack-append (Lazy-Refill: Lock, Page-Increment,
-                          # Exhausted-Flag, Dedup, Fehlerpfad — nutzt
-                          # vi.importActual + gemocktes global.fetch)
+                          # Exhausted-Flag, Dedup, Fehlerpfad),
+                          # room-stack-generate (Initial-Generation: Happy Path,
+                          # Regen-Wipe, Exhausted, Fehlerpropagation — beide nutzen
+                          # vi.importActual + gemocktes global.fetch),
+                          # socket (JOIN-Handshake: JWT-Verify + Room-Membership —
+                          # nutzt vi.importActual + eigenen httpServer +
+                          # socket.io-client; Shared-Server bleibt unberührt)
 
 watchd/watchd/
 ├── watchdApp.swift       # @main; deep link handling; environment objects: AuthViewModel, NetworkMonitor
