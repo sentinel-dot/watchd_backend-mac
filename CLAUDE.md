@@ -143,9 +143,15 @@ watchd/watchd/
 
 Views/                         # alle SwiftUI-Screens (Xcode 16 erfasst neue Dateien automatisch)
 ├── AuthView.swift             # Login / Register / Guest / Forgot-Password Entry-Screen
-├── HomeView.swift             # Room-Liste, Navigation zu Swipe / Archiv / Einstellungen
+├── MainTabView.swift          # Auth-Root: 3 Tabs (Räume / Favoriten / Profil), je eigene
+│                              # NavigationStack; UITabBarAppearance Theme-getintet
+├── RoomsView.swift            # Räume-Tab (ex-HomeView): Hallo-Header, Room-Liste,
+│                              # Create/Join-Buttons — Settings-Menu ausgelagert
+├── ProfileView.swift          # Profil-Tab (List): Konto, Archiv, Rechtliches,
+│                              # Abmelden, Konto löschen (kein Theme-Switcher — Velvet Hour fix)
 ├── SwipeView.swift            # Karten-Stack (3 gestaffelt), Drag-Gesture, Match-Modal-Trigger
-├── MatchView.swift            # Vollbild-Match mit Konfetti + Streaming-Optionen
+├── MatchView.swift            # Hero-Moment: radialer Accent-Bloom + 6-Stufen-Staggered-Reveal
+│                              # + .success-Haptik (kein Konfetti). Streaming-Optionen als Chips
 ├── MatchesListView.swift      # Paginiert, watched togglen, Detail-Navigation
 ├── FavoritesListView.swift    # Paginiert, toggleFavorite, Detail-Navigation
 ├── MovieDetailView.swift      # Film-Details + Streaming-Anbieter
@@ -362,30 +368,32 @@ App Launch → ContentView
 │   ├── Register-Sheet
 │   ├── Passwort vergessen → Reset-Mail → deep link → ResetPasswordView
 │   └── Guest Login (anonymer dt. Name)
-└── AUTH → HomeView
-    ├── Room-Karte → SwipeView
-    │   ├── Karten-Stack (3 Karten, gestaffelt): Drag ±100pt
-    │   ├── Right-Swipe → Matchmaking → Socket.io match → MatchView Modal
-    │   │   └── MatchView: Konfetti + Streaming-Optionen
-    │   │       ├── "Weiter swipen" → zurück zur SwipeView
-    │   │       │   └── (Gast, ≥3 Matches, Cooldown abgelaufen)
-    │   │       │       → GuestUpgradePromptSheet
-    │   │       │         ├── "Jetzt sichern" → UpgradeAccountView
-    │   │       │         └── "Später" → zurück zur SwipeView
-    │   │       └── "Alle Matches" → MatchesListView
-    │   ├── Herz-Button (Karte) → Favorit togglen
-    │   ├── Toolbar-Herz → MatchesListView → MovieDetailView
-    │   └── Socket Events: partner_joined/left, room_dissolved, filters_updated
-    ├── Room erstellen → CreateRoomSheet (Name + Filter) → SwipeView
-    ├── Room beitreten → JoinRoomSheet (6-char Code) → SwipeView
-    ├── Filter bearbeiten → RoomFiltersView → Stack neu generieren
-    ├── Favoriten → FavoritesListView → MovieDetailView
-    ├── Archivierte Rooms → ArchivedRoomsView
-    └── Einstellungen: Name, Upgrade (Guest), Legal, Logout
-        └── Logout als Gast → 3-Button-Alert:
-            ├── "Konto sichern" → UpgradeAccountView
-            ├── "Trotzdem abmelden" → logout (destructive)
-            └── "Abbrechen"
+└── AUTH → MainTabView (3 Tabs, je eigene NavigationStack)
+    ├── Tab "Räume" → RoomsView
+    │   ├── Room-Karte → SwipeView (TabBar hidden)
+    │   │   ├── Karten-Stack (3 Karten, gestaffelt): Drag ±100pt
+    │   │   ├── Right-Swipe → Matchmaking → Socket.io match → MatchView Sheet
+    │   │   │   └── MatchView: Radial-Bloom + Staggered-Reveal + Streaming-Optionen
+    │   │   │       ├── "Weiter swipen" → zurück zur SwipeView
+    │   │   │       │   └── (Gast, ≥3 Matches, Cooldown abgelaufen)
+    │   │   │       │       → GuestUpgradePromptSheet
+    │   │   │       │         ├── "Jetzt sichern" → UpgradeAccountView
+    │   │   │       │         └── "Später" → zurück zur SwipeView
+    │   │   │       └── "Alle Matches" → MatchesListView
+    │   │   ├── Herz-Button (Karte) → Favorit togglen
+    │   │   ├── Toolbar-Herz → MatchesListView → MovieDetailView
+    │   │   └── Socket Events: partner_joined/left, room_dissolved, filters_updated
+    │   ├── Room erstellen → CreateRoomSheet (Name + Filter) → SwipeView
+    │   ├── Room beitreten → JoinRoomSheet (6-char Code) → SwipeView
+    │   └── Filter bearbeiten → RoomFiltersView → Stack neu generieren
+    ├── Tab "Favoriten" → FavoritesListView (global, roomId-entkoppelt) → MovieDetailView
+    └── Tab "Profil" → ProfileView
+        ├── Konto: Name, Email, Guest → UpgradeAccountView
+        ├── Archiv → ArchivedRoomsView
+        ├── Rechtliches → Datenschutz / Nutzungsbedingungen / Impressum / Datenquellen
+        └── Session:
+            ├── Abmelden → (Gast: 3-Button-Alert)
+            └── Konto löschen → Destructive-Alert
 
 Deep Links:
   watchd://join/ROOMCODE              → auto-join (oder Code für Post-Login queuen)
@@ -444,9 +452,10 @@ Xcode-Pflicht: Push Notifications Capability via Signing & Capabilities → erze
 
 ## Offene Punkte
 
-| Status       | Thema                                                                                                                                                                                            |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **erledigt** | CI: GitHub Actions mit MySQL-8-Service-Container (`.github/workflows/test.yml`), Typecheck + Tests auf jedem PR; Branch-Protection auf `main` blockiert direkte Pushes (siehe `CONTRIBUTING.md`) |
-| **post-MVP** | Room-Namen editieren in UI (Route existiert, UI fehlt)                                                                                                                                           |
-| **post-MVP** | Pino-Logs strukturiert in Datei / Logdienst (aktuell nur stdout)                                                                                                                                 |
-| **post-MVP** | App Store Assets (Screenshots, App-Icon alle Größen)                                                                                                                                             |
+| Status        | Thema                                                                                                                                                                                                                                                                                                |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **erledigt**  | CI: GitHub Actions mit MySQL-8-Service-Container (`.github/workflows/test.yml`), Typecheck + Tests auf jedem PR; Branch-Protection auf `main` blockiert direkte Pushes (siehe `CONTRIBUTING.md`)                                                                                                     |
+| **erledigt**  | Design Overhaul iOS: Einziges Theme **Velvet Hour** (cool dark, Champagne-Accent, Bluu Next + Manrope) + Bottom-Tab-Navigation. Design-Kontext in `watchd/.impeccable.md`. Phasen 0–5 + Vereinfachung abgeschlossen (2026-04-24): Theme-Foundation, MainTabView + ProfileView + RoomsView, alle Screens editorial redesigned, WatchdTheme-Shim gelöscht, ThemeManager entfernt (kein Switcher), Theme statisch injiziert (`.environment(\.theme, .velvetHour)` + `.preferredColorScheme(.dark)`). BluuNext (Bold + BoldItalic) + Manrope (Regular/Medium/SemiBold/Bold) liegen unter `watchd/watchd/Fonts/`, `FontRegistry.registerAll()` registriert sie beim App-Launch. Keine Backend-Änderungen. |
+| **post-MVP**  | Room-Namen editieren in UI (Route existiert, UI fehlt)                                                                                                                                                                                                                                               |
+| **post-MVP**  | Pino-Logs strukturiert in Datei / Logdienst (aktuell nur stdout)                                                                                                                                                                                                                                     |
+| **post-MVP**  | App Store Assets (Screenshots, App-Icon alle Größen)                                                                                                                                                                                                                                                 |
