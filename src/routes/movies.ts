@@ -8,7 +8,7 @@ import type { TmdbMovie } from '../services/tmdb';
 import { getMovieById } from '../services/tmdb';
 import type { StreamingOffer } from '../services/justwatch';
 import { getStreamingOffers } from '../services/justwatch';
-import { appendRoomStack } from '../services/room-stack';
+import { appendPartnershipStack } from '../services/partnership-stack';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 const router = Router();
@@ -28,7 +28,7 @@ interface StackRow extends RowDataPacket {
   position: number;
 }
 
-interface RoomStateRow extends RowDataPacket {
+interface PartnershipStateRow extends RowDataPacket {
   stack_generating: number;
   stack_exhausted: number;
 }
@@ -38,66 +38,76 @@ export interface MovieWithStreaming extends TmdbMovie {
   genre_ids: number[];
 }
 
-function triggerRefillIfNeeded(roomId: number, unseenCount: number, roomState: RoomStateRow): void {
-  if (unseenCount > REFILL_THRESHOLD || roomState.stack_exhausted) return;
+function triggerRefillIfNeeded(
+  partnershipId: number,
+  unseenCount: number,
+  state: PartnershipStateRow,
+): void {
+  if (unseenCount > REFILL_THRESHOLD || state.stack_exhausted) return;
 
   pool
     .query<ResultSetHeader>(
-      'UPDATE rooms SET stack_generating = 1 WHERE id = ? AND stack_generating = 0',
-      [roomId],
+      'UPDATE partnerships SET stack_generating = 1 WHERE id = ? AND stack_generating = 0',
+      [partnershipId],
     )
     .then(([result]) => {
       if (result.affectedRows > 0) {
-        appendRoomStack(roomId).catch((err) =>
-          logger.error({ err, roomId }, 'Background stack refill failed'),
+        appendPartnershipStack(partnershipId).catch((err: unknown) =>
+          logger.error({ err, partnershipId }, 'Background stack refill failed'),
         );
       }
     })
-    .catch((err) => logger.error({ err, roomId }, 'Failed to acquire stack_generating lock'));
+    .catch((err: unknown) =>
+      logger.error({ err, partnershipId }, 'Failed to acquire stack_generating lock'),
+    );
 }
 
 router.get(
-  '/rooms/:roomId/next-movie',
+  '/partnerships/:partnershipId/next-movie',
   authMiddleware,
   async (req: Request, res: Response): Promise<void> => {
     const userId = (req as AuthRequest).user.userId;
-    const roomId = parseInt(req.params['roomId'], 10);
+    const partnershipId = parseInt(req.params['partnershipId'], 10);
 
-    if (isNaN(roomId)) {
-      res.status(400).json({ error: 'Ungueltige Room-ID' });
+    if (isNaN(partnershipId)) {
+      res.status(400).json({ error: 'Ungueltige Partnership-ID' });
       return;
     }
 
     try {
       const [membership] = await pool.query<MembershipRow[]>(
-        'SELECT user_id FROM room_members WHERE room_id = ? AND user_id = ?',
-        [roomId, userId],
+        'SELECT user_id FROM partnership_members WHERE partnership_id = ? AND user_id = ?',
+        [partnershipId, userId],
       );
       if (membership.length === 0) {
-        res.status(403).json({ error: 'Kein Mitglied dieses Rooms' });
+        res.status(403).json({ error: 'Kein Mitglied dieser Partnerschaft' });
         return;
       }
 
-      const [[roomState], [swiped], [stackRows]] = await Promise.all([
-        pool.query<RoomStateRow[]>(
-          'SELECT stack_generating, stack_exhausted FROM rooms WHERE id = ?',
-          [roomId],
+      const [[partnershipState], [swiped], [stackRows]] = await Promise.all([
+        pool.query<PartnershipStateRow[]>(
+          'SELECT stack_generating, stack_exhausted FROM partnerships WHERE id = ?',
+          [partnershipId],
         ),
-        pool.query<SwipedRow[]>('SELECT movie_id FROM swipes WHERE user_id = ? AND room_id = ?', [
-          userId,
-          roomId,
-        ]),
+        pool.query<SwipedRow[]>(
+          'SELECT movie_id FROM swipes WHERE user_id = ? AND partnership_id = ?',
+          [userId, partnershipId],
+        ),
         pool.query<StackRow[]>(
-          'SELECT movie_id, position FROM room_stack WHERE room_id = ? ORDER BY position ASC',
-          [roomId],
+          'SELECT movie_id, position FROM partnership_stack WHERE partnership_id = ? ORDER BY position ASC',
+          [partnershipId],
         ),
       ]);
 
       const swipedIds = new Set((swiped as SwipedRow[]).map((r) => r.movie_id));
       const unseenMovies = (stackRows as StackRow[]).filter((row) => !swipedIds.has(row.movie_id));
 
-      if (roomState.length > 0) {
-        triggerRefillIfNeeded(roomId, unseenMovies.length, (roomState as RoomStateRow[])[0]);
+      if (partnershipState.length > 0) {
+        triggerRefillIfNeeded(
+          partnershipId,
+          unseenMovies.length,
+          (partnershipState as PartnershipStateRow[])[0],
+        );
       }
 
       const nextMovie = unseenMovies[0];
@@ -131,54 +141,58 @@ router.get(
         stackEmpty: false,
       });
     } catch (err) {
-      logger.error({ err, userId, roomId }, 'Next movie error');
+      logger.error({ err, userId, partnershipId }, 'Next movie error');
       res.status(500).json({ error: 'Interner Serverfehler' });
     }
   },
 );
 
-// GET /api/movies/feed?roomId=&afterPosition=
+// GET /api/movies/feed?partnershipId=&afterPosition=
 router.get('/feed', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as AuthRequest).user.userId;
-  const roomId = parseInt(req.query['roomId'] as string, 10);
+  const partnershipId = parseInt(req.query['partnershipId'] as string, 10);
   const rawAfterPosition = parseInt((req.query['afterPosition'] as string) ?? '0', 10);
   const afterPosition = isNaN(rawAfterPosition) ? 0 : rawAfterPosition;
 
-  if (isNaN(roomId)) {
-    res.status(400).json({ error: 'roomId Parameter ist erforderlich' });
+  if (isNaN(partnershipId)) {
+    res.status(400).json({ error: 'partnershipId Parameter ist erforderlich' });
     return;
   }
 
   try {
     const [membership] = await pool.query<MembershipRow[]>(
-      'SELECT user_id FROM room_members WHERE room_id = ? AND user_id = ?',
-      [roomId, userId],
+      'SELECT user_id FROM partnership_members WHERE partnership_id = ? AND user_id = ?',
+      [partnershipId, userId],
     );
     if (membership.length === 0) {
-      res.status(403).json({ error: 'Kein Mitglied dieses Rooms' });
+      res.status(403).json({ error: 'Kein Mitglied dieser Partnerschaft' });
       return;
     }
 
-    const [[roomState], [swiped], [stackRows]] = await Promise.all([
-      pool.query<RoomStateRow[]>(
-        'SELECT stack_generating, stack_exhausted FROM rooms WHERE id = ?',
-        [roomId],
+    const [[partnershipState], [swiped], [stackRows]] = await Promise.all([
+      pool.query<PartnershipStateRow[]>(
+        'SELECT stack_generating, stack_exhausted FROM partnerships WHERE id = ?',
+        [partnershipId],
       ),
-      pool.query<SwipedRow[]>('SELECT movie_id FROM swipes WHERE user_id = ? AND room_id = ?', [
-        userId,
-        roomId,
-      ]),
+      pool.query<SwipedRow[]>(
+        'SELECT movie_id FROM swipes WHERE user_id = ? AND partnership_id = ?',
+        [userId, partnershipId],
+      ),
       pool.query<StackRow[]>(
-        'SELECT movie_id, position FROM room_stack WHERE room_id = ? ORDER BY position ASC',
-        [roomId],
+        'SELECT movie_id, position FROM partnership_stack WHERE partnership_id = ? ORDER BY position ASC',
+        [partnershipId],
       ),
     ]);
 
     const swipedIds = new Set((swiped as SwipedRow[]).map((r) => r.movie_id));
     const unseenMovies = (stackRows as StackRow[]).filter((row) => !swipedIds.has(row.movie_id));
 
-    if (roomState.length > 0) {
-      triggerRefillIfNeeded(roomId, unseenMovies.length, (roomState as RoomStateRow[])[0]);
+    if (partnershipState.length > 0) {
+      triggerRefillIfNeeded(
+        partnershipId,
+        unseenMovies.length,
+        (partnershipState as PartnershipStateRow[])[0],
+      );
     }
 
     const pageSize = 20;
@@ -211,7 +225,7 @@ router.get('/feed', authMiddleware, async (req: Request, res: Response): Promise
 
     res.json({ movies: results, lastPosition });
   } catch (err) {
-    logger.error({ err, userId, roomId }, 'Movie feed error');
+    logger.error({ err, userId, partnershipId }, 'Movie feed error');
     res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });

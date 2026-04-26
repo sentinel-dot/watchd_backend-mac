@@ -5,6 +5,7 @@ import { pool } from '../db/connection';
 import type { AuthRequest } from '../middleware/auth';
 import { authMiddleware } from '../middleware/auth';
 import { logger } from '../logger';
+import { generateUniqueShareCode } from '../services/share-code';
 import type { RowDataPacket } from 'mysql2';
 
 const router = Router();
@@ -13,7 +14,11 @@ interface UserRow extends RowDataPacket {
   id: number;
   name: string;
   email: string | null;
-  is_guest: boolean;
+  share_code: string;
+}
+
+interface ShareCodeRow extends RowDataPacket {
+  share_code: string;
 }
 
 router.patch(
@@ -39,7 +44,7 @@ router.patch(
       await pool.query('UPDATE users SET name = ? WHERE id = ?', [name, userId]);
 
       const [users] = await pool.query<UserRow[]>(
-        'SELECT id, name, email, is_guest FROM users WHERE id = ?',
+        'SELECT id, name, email, share_code FROM users WHERE id = ?',
         [userId],
       );
 
@@ -53,7 +58,7 @@ router.patch(
           id: users[0].id,
           name: users[0].name,
           email: users[0].email,
-          isGuest: users[0].is_guest,
+          shareCode: users[0].share_code,
         },
       });
     } catch (err) {
@@ -88,6 +93,40 @@ router.post(
       res.status(204).send();
     } catch (err) {
       logger.error({ err, userId }, 'Save device token error');
+      res.status(500).json({ error: 'Interner Serverfehler' });
+    }
+  },
+);
+
+router.get('/me/share-code', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const userId = (req as AuthRequest).user.userId;
+  try {
+    const [rows] = await pool.query<ShareCodeRow[]>('SELECT share_code FROM users WHERE id = ?', [
+      userId,
+    ]);
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'Benutzer nicht gefunden' });
+      return;
+    }
+    res.json({ shareCode: rows[0].share_code });
+  } catch (err) {
+    logger.error({ err, userId }, 'Get share-code error');
+    res.status(500).json({ error: 'Interner Serverfehler' });
+  }
+});
+
+router.post(
+  '/me/share-code/regenerate',
+  authMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = (req as AuthRequest).user.userId;
+    try {
+      const newCode = await generateUniqueShareCode();
+      await pool.query('UPDATE users SET share_code = ? WHERE id = ?', [newCode, userId]);
+      logger.info({ userId }, 'Share-code regenerated');
+      res.json({ shareCode: newCode });
+    } catch (err) {
+      logger.error({ err, userId }, 'Regenerate share-code error');
       res.status(500).json({ error: 'Interner Serverfehler' });
     }
   },

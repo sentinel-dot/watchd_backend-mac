@@ -35,7 +35,12 @@ function getProvider(): apn.Provider | null {
   }
 }
 
-export async function sendMatchPush(deviceTokens: string[], movieTitle: string): Promise<void> {
+export async function sendMatchPush(
+  deviceTokens: string[],
+  movieTitle: string,
+  partnershipId: number,
+  movieId: number,
+): Promise<void> {
   const prov = getProvider();
   if (!prov || deviceTokens.length === 0) return;
 
@@ -48,14 +53,78 @@ export async function sendMatchPush(deviceTokens: string[], movieTitle: string):
     body: `Ihr mögt beide "${movieTitle}"`,
   };
   notification.topic = 'com.milinkovic.watchd';
-  notification.payload = { type: 'match', movieTitle };
+  notification.payload = { type: 'match', partnershipId, movieId, movieTitle };
 
   try {
     const result = await prov.send(notification, deviceTokens);
     if (result.failed.length > 0) {
       logger.warn({ failed: result.failed }, 'APNs: some tokens failed');
     }
-    logger.info({ sent: result.sent.length, failed: result.failed.length }, 'APNs push sent');
+    logger.info({ sent: result.sent.length, failed: result.failed.length }, 'APNs match push sent');
+  } catch (err) {
+    logger.error({ err }, 'APNs send error');
+  }
+}
+
+export async function sendPartnershipRequestPush(
+  deviceToken: string,
+  requesterName: string,
+  partnershipId: number,
+): Promise<void> {
+  const prov = getProvider();
+  if (!prov || !deviceToken) return;
+
+  const notification = new apn.Notification();
+  notification.expiry = Math.floor(Date.now() / 1000) + 3600;
+  notification.sound = 'default';
+  notification.alert = {
+    title: 'Neue Partner-Anfrage',
+    body: `${requesterName} möchte dich als Partner adden`,
+  };
+  notification.topic = 'com.milinkovic.watchd';
+  notification.payload = { type: 'partnership_request', partnershipId, requesterName };
+
+  try {
+    const result = await prov.send(notification, [deviceToken]);
+    if (result.failed.length > 0) {
+      logger.warn({ failed: result.failed }, 'APNs: partnership request push failed');
+    }
+    logger.info(
+      { sent: result.sent.length, failed: result.failed.length },
+      'APNs partnership request push sent',
+    );
+  } catch (err) {
+    logger.error({ err }, 'APNs send error');
+  }
+}
+
+export async function sendPartnershipAcceptedPush(
+  deviceToken: string,
+  partnerName: string,
+  partnershipId: number,
+): Promise<void> {
+  const prov = getProvider();
+  if (!prov || !deviceToken) return;
+
+  const notification = new apn.Notification();
+  notification.expiry = Math.floor(Date.now() / 1000) + 3600;
+  notification.sound = 'default';
+  notification.alert = {
+    title: 'Partner-Anfrage angenommen',
+    body: `${partnerName} ist jetzt dein Partner. Los geht's!`,
+  };
+  notification.topic = 'com.milinkovic.watchd';
+  notification.payload = { type: 'partnership_accepted', partnershipId, partnerName };
+
+  try {
+    const result = await prov.send(notification, [deviceToken]);
+    if (result.failed.length > 0) {
+      logger.warn({ failed: result.failed }, 'APNs: partnership accepted push failed');
+    }
+    logger.info(
+      { sent: result.sent.length, failed: result.failed.length },
+      'APNs partnership accepted push sent',
+    );
   } catch (err) {
     logger.error({ err }, 'APNs send error');
   }

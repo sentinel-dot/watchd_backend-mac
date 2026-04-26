@@ -5,7 +5,6 @@ import { config } from '../config';
 export interface AuthPayload {
   userId: number;
   email: string | null;
-  isGuest: boolean;
 }
 
 export interface AuthRequest extends Request {

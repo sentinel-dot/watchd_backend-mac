@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 
-vi.unmock('../../services/room-stack');
-import { buildTmdbUrl } from '../../services/room-stack';
+vi.unmock('../../services/partnership-stack');
+import { buildTmdbUrl } from '../../services/partnership-stack';
 
 describe('buildTmdbUrl', () => {
   it('builds a base URL with defaults on page 1', () => {

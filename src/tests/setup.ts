@@ -17,7 +17,7 @@ import type { AddressInfo } from 'net';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MockModule = Record<string, any>;
 type MockRegistry = {
-  roomStack?: MockModule;
+  partnershipStack?: MockModule;
   socket?: MockModule;
   apns?: MockModule;
   mail?: MockModule;
@@ -31,11 +31,11 @@ const { getRegistry } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../services/room-stack', () => {
+vi.mock('../services/partnership-stack', () => {
   const r = getRegistry();
-  return (r.roomStack ??= {
-    generateRoomStack: vi.fn().mockResolvedValue(undefined),
-    appendRoomStack: vi.fn().mockResolvedValue(undefined),
+  return (r.partnershipStack ??= {
+    generatePartnershipStack: vi.fn().mockResolvedValue(undefined),
+    appendPartnershipStack: vi.fn().mockResolvedValue(undefined),
     buildTmdbUrl: vi.fn(),
   });
 });
@@ -45,7 +45,9 @@ vi.mock('../socket', () => {
   if (!r.socket) {
     const emit = vi.fn();
     const to = vi.fn(() => ({ emit }));
-    const io = { to, emit };
+    const disconnectSockets = vi.fn();
+    const inFn = vi.fn(() => ({ disconnectSockets }));
+    const io = { to, emit, in: inFn, __disconnectSockets: disconnectSockets };
     r.socket = {
       initSocket: vi.fn(() => io),
       getIo: vi.fn(() => io),
@@ -60,6 +62,8 @@ vi.mock('../services/apns', () => {
   const r = getRegistry();
   return (r.apns ??= {
     sendMatchPush: vi.fn().mockResolvedValue(undefined),
+    sendPartnershipRequestPush: vi.fn().mockResolvedValue(undefined),
+    sendPartnershipAcceptedPush: vi.fn().mockResolvedValue(undefined),
     sendPushToDevice: vi.fn().mockResolvedValue(undefined),
   });
 });
@@ -121,11 +125,11 @@ const TABLES = [
   'password_reset_tokens',
   'refresh_tokens',
   'favorites',
-  'room_stack',
+  'partnership_stack',
   'matches',
   'swipes',
-  'room_members',
-  'rooms',
+  'partnership_members',
+  'partnerships',
   'users',
 ];
 

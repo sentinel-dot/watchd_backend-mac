@@ -9,8 +9,8 @@ export interface TestUser {
   accessToken: string;
   refreshToken: string;
   name: string;
-  email: string | null;
-  isGuest: boolean;
+  email: string;
+  shareCode: string;
 }
 
 let userCounter = 0;
@@ -34,80 +34,77 @@ export async function createUser(
     refreshToken: res.body.refreshToken,
     name: res.body.user.name,
     email: res.body.user.email,
-    isGuest: res.body.user.isGuest,
+    shareCode: res.body.user.shareCode,
   };
 }
 
-export async function createGuestUser(agent: Agent): Promise<TestUser> {
-  const res = await agent.post('/api/auth/guest').send({});
-  if (res.status !== 201) {
-    throw new Error(`createGuestUser failed: ${res.status} ${JSON.stringify(res.body)}`);
-  }
-  return {
-    userId: res.body.user.id,
-    accessToken: res.body.token,
-    refreshToken: res.body.refreshToken,
-    name: res.body.user.name,
-    email: res.body.user.email,
-    isGuest: res.body.user.isGuest,
-  };
+export interface TestPartnership {
+  id: number;
+  requesterId: number;
+  addresseeId: number;
+  status: 'pending' | 'active';
 }
 
-export async function createRoom(
-  agent: Agent,
-  token: string,
-  body: { name?: string; filters?: object } = {},
-): Promise<{ id: number; code: string }> {
-  const res = await agent.post('/api/rooms').set('Authorization', `Bearer ${token}`).send(body);
-  if (res.status !== 201) {
-    throw new Error(`createRoom failed: ${res.status} ${JSON.stringify(res.body)}`);
+export async function createPartnership(
+  requesterId: number,
+  addresseeId: number,
+  status: 'pending' | 'active' = 'active',
+): Promise<TestPartnership> {
+  const acceptedAt = status === 'active' ? new Date() : null;
+  const [result] = await pool.query<ResultSetHeader>(
+    'INSERT INTO partnerships (requester_id, addressee_id, status, accepted_at) VALUES (?, ?, ?, ?)',
+    [requesterId, addresseeId, status, acceptedAt],
+  );
+  const partnershipId = result.insertId;
+
+  await pool.query('INSERT INTO partnership_members (partnership_id, user_id) VALUES (?, ?)', [
+    partnershipId,
+    requesterId,
+  ]);
+  if (status === 'active') {
+    await pool.query('INSERT INTO partnership_members (partnership_id, user_id) VALUES (?, ?)', [
+      partnershipId,
+      addresseeId,
+    ]);
   }
-  return { id: res.body.room.id, code: res.body.room.code };
+
+  return { id: partnershipId, requesterId, addresseeId, status };
 }
 
-export async function joinRoom(
-  agent: Agent,
-  token: string,
-  code: string,
-): Promise<{ id: number; code: string }> {
-  const res = await agent
-    .post('/api/rooms/join')
-    .set('Authorization', `Bearer ${token}`)
-    .send({ code });
-  if (res.status !== 200) {
-    throw new Error(`joinRoom failed: ${res.status} ${JSON.stringify(res.body)}`);
-  }
-  return { id: res.body.room.id, code: res.body.room.code };
+export async function createPendingRequest(
+  requesterId: number,
+  addresseeId: number,
+): Promise<TestPartnership> {
+  return createPartnership(requesterId, addresseeId, 'pending');
 }
 
 export async function seedStackMovie(
-  roomId: number,
+  partnershipId: number,
   movieId: number,
   position: number,
 ): Promise<void> {
-  await pool.query('INSERT INTO room_stack (room_id, movie_id, position) VALUES (?, ?, ?)', [
-    roomId,
-    movieId,
-    position,
-  ]);
+  await pool.query(
+    'INSERT INTO partnership_stack (partnership_id, movie_id, position) VALUES (?, ?, ?)',
+    [partnershipId, movieId, position],
+  );
 }
 
 export async function seedSwipe(
   userId: number,
   movieId: number,
-  roomId: number,
+  partnershipId: number,
   direction: 'left' | 'right',
 ): Promise<void> {
   await pool.query(
-    'INSERT INTO swipes (user_id, movie_id, room_id, direction) VALUES (?, ?, ?, ?)',
-    [userId, movieId, roomId, direction],
+    'INSERT INTO swipes (user_id, movie_id, partnership_id, direction) VALUES (?, ?, ?, ?)',
+    [userId, movieId, partnershipId, direction],
   );
 }
 
-export async function seedMatch(roomId: number, movieId: number): Promise<number> {
+export async function seedMatch(partnershipId: number, movieId: number): Promise<number> {
   const [result] = await pool.query<ResultSetHeader>(
-    'INSERT INTO matches (room_id, movie_id) VALUES (?, ?)',
-    [roomId, movieId],
+    'INSERT INTO matches (partnership_id, movie_id) VALUES (?, ?)',
+    [partnershipId, movieId],
   );
   return result.insertId;
 }

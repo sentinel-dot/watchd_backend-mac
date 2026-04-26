@@ -1,13 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { agent } from '../setup';
 import { pool } from '../../db/connection';
-import { createUser, createGuestUser } from '../helpers';
+import { createUser, createPartnership, seedSwipe, seedMatch, seedStackMovie } from '../helpers';
 import { sendPasswordResetEmail } from '../../services/mail';
 import crypto from 'crypto';
 import type { RowDataPacket } from 'mysql2';
 
 describe('POST /api/auth/register', () => {
-  it('creates a user and returns a token pair', async () => {
+  it('creates a user with a share-code and returns a token pair', async () => {
     const res = await agent
       .post('/api/auth/register')
       .send({ name: 'Alice', email: 'alice@example.com', password: 'testpassword123' });
@@ -18,9 +18,16 @@ describe('POST /api/auth/register', () => {
     expect(res.body.user).toMatchObject({
       name: 'Alice',
       email: 'alice@example.com',
-      isGuest: false,
     });
     expect(res.body.user.id).toBeTypeOf('number');
+    expect(res.body.user.shareCode).toBeTypeOf('string');
+    expect(res.body.user.shareCode).toHaveLength(8);
+
+    const [rows] = await pool.query<(RowDataPacket & { share_code: string })[]>(
+      'SELECT share_code FROM users WHERE id = ?',
+      [res.body.user.id],
+    );
+    expect(rows[0].share_code).toBe(res.body.user.shareCode);
   });
 
   it('returns 409 for duplicate email', async () => {
@@ -47,14 +54,18 @@ describe('POST /api/auth/register', () => {
 });
 
 describe('POST /api/auth/login', () => {
-  it('returns a token pair on correct credentials', async () => {
-    await createUser(agent, { email: 'login@example.com', password: 'correct-password-1' });
+  it('returns a token pair (incl. shareCode) on correct credentials', async () => {
+    const created = await createUser(agent, {
+      email: 'login@example.com',
+      password: 'correct-password-1',
+    });
     const res = await agent
       .post('/api/auth/login')
       .send({ email: 'login@example.com', password: 'correct-password-1' });
     expect(res.status).toBe(200);
     expect(res.body.token).toBeTypeOf('string');
     expect(res.body.refreshToken).toBeTypeOf('string');
+    expect(res.body.user.shareCode).toBe(created.shareCode);
   });
 
   it('returns 401 on wrong password', async () => {
@@ -73,16 +84,6 @@ describe('POST /api/auth/login', () => {
   });
 });
 
-describe('POST /api/auth/guest', () => {
-  it('creates a guest with a token pair', async () => {
-    const res = await agent.post('/api/auth/guest').send({});
-    expect(res.status).toBe(201);
-    expect(res.body.user.isGuest).toBe(true);
-    expect(res.body.user.email).toBeNull();
-    expect(res.body.token).toBeTypeOf('string');
-  });
-});
-
 describe('POST /api/auth/refresh', () => {
   it('rotates tokens and revokes the old one', async () => {
     const user = await createUser(agent);
@@ -90,8 +91,8 @@ describe('POST /api/auth/refresh', () => {
     expect(res.status).toBe(200);
     expect(res.body.token).toBeTypeOf('string');
     expect(res.body.refreshToken).not.toBe(user.refreshToken);
+    expect(res.body.user.shareCode).toBe(user.shareCode);
 
-    // Old refresh token must now be revoked in DB
     const decoded = JSON.parse(Buffer.from(user.refreshToken, 'base64url').toString('utf-8'));
     const oldHash = crypto.createHash('sha256').update(decoded.tok).digest('hex');
     const [rows] = await pool.query<(RowDataPacket & { revoked: number })[]>(
@@ -104,15 +105,12 @@ describe('POST /api/auth/refresh', () => {
   it('detects token reuse and revokes the whole family', async () => {
     const user = await createUser(agent);
 
-    // First refresh succeeds
     const first = await agent.post('/api/auth/refresh').send({ refreshToken: user.refreshToken });
     expect(first.status).toBe(200);
 
-    // Reusing the original (now revoked) token must fail AND revoke the new one
     const reuse = await agent.post('/api/auth/refresh').send({ refreshToken: user.refreshToken });
     expect(reuse.status).toBe(401);
 
-    // The new refresh token (from the successful rotation) must also be revoked
     const newDecoded = JSON.parse(
       Buffer.from(first.body.refreshToken, 'base64url').toString('utf-8'),
     );
@@ -176,19 +174,16 @@ describe('POST /api/auth/reset-password', () => {
       .send({ token, newPassword: 'new-password-1' });
     expect(res.status).toBe(200);
 
-    // Old password rejected
     const oldLogin = await agent
       .post('/api/auth/login')
       .send({ email: 'reset@example.com', password: 'old-password-1' });
     expect(oldLogin.status).toBe(401);
 
-    // New password works
     const newLogin = await agent
       .post('/api/auth/login')
       .send({ email: 'reset@example.com', password: 'new-password-1' });
     expect(newLogin.status).toBe(200);
 
-    // Prior refresh token revoked
     const reuse = await agent.post('/api/auth/refresh').send({ refreshToken: user.refreshToken });
     expect(reuse.status).toBe(401);
   });
@@ -223,44 +218,6 @@ describe('POST /api/auth/reset-password', () => {
   });
 });
 
-describe('POST /api/auth/upgrade', () => {
-  it('upgrades a guest to a full account', async () => {
-    const guest = await createGuestUser(agent);
-    const res = await agent
-      .post('/api/auth/upgrade')
-      .set('Authorization', `Bearer ${guest.accessToken}`)
-      .send({ email: 'upgraded@example.com', password: 'new-password-1' });
-    expect(res.status).toBe(200);
-    expect(res.body.user.isGuest).toBe(false);
-    expect(res.body.user.email).toBe('upgraded@example.com');
-
-    const [rows] = await pool.query<(RowDataPacket & { is_guest: number })[]>(
-      'SELECT is_guest FROM users WHERE id = ?',
-      [guest.userId],
-    );
-    expect(rows[0].is_guest).toBe(0);
-  });
-
-  it('rejects upgrade for a non-guest', async () => {
-    const user = await createUser(agent);
-    const res = await agent
-      .post('/api/auth/upgrade')
-      .set('Authorization', `Bearer ${user.accessToken}`)
-      .send({ email: 'other@example.com', password: 'new-password-1' });
-    expect(res.status).toBe(400);
-  });
-
-  it('returns 409 when email is taken', async () => {
-    await createUser(agent, { email: 'taken@example.com' });
-    const guest = await createGuestUser(agent);
-    const res = await agent
-      .post('/api/auth/upgrade')
-      .set('Authorization', `Bearer ${guest.accessToken}`)
-      .send({ email: 'taken@example.com', password: 'new-password-1' });
-    expect(res.status).toBe(409);
-  });
-});
-
 describe('POST /api/auth/logout', () => {
   it('revokes the provided refresh token', async () => {
     const user = await createUser(agent);
@@ -289,5 +246,50 @@ describe('DELETE /api/auth/delete-account', () => {
       .post('/api/auth/login')
       .send({ email: 'del@example.com', password: 'delete-me-123' });
     expect(login.status).toBe(401);
+  });
+
+  it('cascades to partnerships, swipes, matches and stack', async () => {
+    const a = await createUser(agent);
+    const b = await createUser(agent);
+    const partnership = await createPartnership(a.userId, b.userId, 'active');
+    await seedStackMovie(partnership.id, 101, 0);
+    await seedSwipe(a.userId, 101, partnership.id, 'right');
+    await seedSwipe(b.userId, 101, partnership.id, 'right');
+    await seedMatch(partnership.id, 101);
+
+    const del = await agent
+      .delete('/api/auth/delete-account')
+      .set('Authorization', `Bearer ${a.accessToken}`);
+    expect(del.status).toBe(200);
+
+    const [partnerships] = await pool.query<RowDataPacket[]>(
+      'SELECT id FROM partnerships WHERE id = ?',
+      [partnership.id],
+    );
+    expect(partnerships.length).toBe(0);
+
+    const [swipes] = await pool.query<RowDataPacket[]>(
+      'SELECT id FROM swipes WHERE partnership_id = ?',
+      [partnership.id],
+    );
+    expect(swipes.length).toBe(0);
+
+    const [matches] = await pool.query<RowDataPacket[]>(
+      'SELECT id FROM matches WHERE partnership_id = ?',
+      [partnership.id],
+    );
+    expect(matches.length).toBe(0);
+
+    const [stack] = await pool.query<RowDataPacket[]>(
+      'SELECT id FROM partnership_stack WHERE partnership_id = ?',
+      [partnership.id],
+    );
+    expect(stack.length).toBe(0);
+
+    const [members] = await pool.query<RowDataPacket[]>(
+      'SELECT id FROM partnership_members WHERE partnership_id = ?',
+      [partnership.id],
+    );
+    expect(members.length).toBe(0);
   });
 });

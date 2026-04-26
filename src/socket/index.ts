@@ -13,7 +13,7 @@ let io: SocketServer;
 
 interface ConnectPayload {
   token?: string;
-  roomId?: number;
+  partnershipId?: number;
 }
 
 interface MemberCheckRow extends RowDataPacket {
@@ -30,10 +30,10 @@ export function initSocket(httpServer: HttpServer, corsOrigins: string | string[
 
   io.on('connection', (socket: Socket) => {
     socket.on(SocketEvents.JOIN, async (payload: ConnectPayload) => {
-      const { token, roomId } = payload ?? {};
+      const { token, partnershipId } = payload ?? {};
 
-      if (!token || !roomId) {
-        socket.emit(SocketEvents.ERROR, { message: 'token and roomId are required' });
+      if (!token) {
+        socket.emit(SocketEvents.ERROR, { message: 'token is required' });
         socket.disconnect();
         return;
       }
@@ -41,23 +41,32 @@ export function initSocket(httpServer: HttpServer, corsOrigins: string | string[
       try {
         const user = jwt.verify(token, config.jwtSecret) as AuthPayload;
 
-        // Verify the user is actually a member of this room
-        const [membership] = await pool.query<MemberCheckRow[]>(
-          'SELECT user_id FROM room_members WHERE room_id = ? AND user_id = ?',
-          [roomId, user.userId],
-        );
-        if (membership.length === 0) {
-          logger.warn({ userId: user.userId, roomId }, 'Socket join denied: not a room member');
-          socket.emit(SocketEvents.ERROR, { message: 'Not a member of this room' });
-          socket.disconnect();
-          return;
-        }
-
-        const roomChannel = `room:${roomId}`;
-        void socket.join(roomChannel);
+        // The user channel always gets joined — it carries partnership_request /
+        // partnership_accepted events which are user-scoped, not partnership-scoped.
         void socket.join(`user:${user.userId}`);
-        socket.emit(SocketEvents.JOINED, { roomId });
-        logger.info({ userId: user.userId, roomId }, 'User joined room via socket');
+
+        if (partnershipId) {
+          const [membership] = await pool.query<MemberCheckRow[]>(
+            'SELECT user_id FROM partnership_members WHERE partnership_id = ? AND user_id = ?',
+            [partnershipId, user.userId],
+          );
+          if (membership.length === 0) {
+            logger.warn(
+              { userId: user.userId, partnershipId },
+              'Socket join denied: not a partnership member',
+            );
+            socket.emit(SocketEvents.ERROR, { message: 'Not a member of this partnership' });
+            socket.disconnect();
+            return;
+          }
+
+          void socket.join(`partnership:${partnershipId}`);
+          socket.emit(SocketEvents.JOINED, { partnershipId });
+          logger.info({ userId: user.userId, partnershipId }, 'User joined partnership via socket');
+        } else {
+          socket.emit(SocketEvents.JOINED, { partnershipId: null });
+          logger.info({ userId: user.userId }, 'User joined user-channel only');
+        }
       } catch (err) {
         logger.warn({ err }, 'Socket auth failed');
         socket.emit(SocketEvents.ERROR, { message: 'Invalid or expired token' });

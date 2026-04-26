@@ -3,7 +3,7 @@ import { config } from '../config';
 import { logger } from '../logger';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 
-interface RoomFilters {
+export interface PartnershipFilters {
   genres?: number[];
   streamingServices?: string[];
   yearFrom?: number;
@@ -12,7 +12,7 @@ interface RoomFilters {
   language?: string;
 }
 
-interface RoomStateRow extends RowDataPacket {
+interface PartnershipStateRow extends RowDataPacket {
   stack_next_page: number;
   filters: string | null;
 }
@@ -33,7 +33,7 @@ const PAGES_PER_BATCH = 5;
 
 export function buildTmdbUrl(
   page: number,
-  filters: RoomFilters,
+  filters: PartnershipFilters,
 ): { url: string; headers: Record<string, string> } {
   const url = new URL('https://api.themoviedb.org/3/discover/movie');
   url.searchParams.set('language', 'de');
@@ -78,7 +78,7 @@ export function buildTmdbUrl(
 async function fetchTmdbPages(
   startPage: number,
   numPages: number,
-  filters: RoomFilters,
+  filters: PartnershipFilters,
 ): Promise<{ movieIds: number[]; totalPages: number }> {
   const movieIds: number[] = [];
   let totalPages = startPage + numPages - 1;
@@ -104,101 +104,114 @@ async function fetchTmdbPages(
   return { movieIds, totalPages };
 }
 
-export async function generateRoomStack(roomId: number, filters: RoomFilters): Promise<void> {
+export async function generatePartnershipStack(
+  partnershipId: number,
+  filters: PartnershipFilters,
+): Promise<void> {
   try {
     if (!config.tmdbApiKey && !config.tmdbReadAccessToken) {
       throw new Error('TMDB API credentials not configured');
     }
 
-    await pool.query('DELETE FROM room_stack WHERE room_id = ?', [roomId]);
+    await pool.query('DELETE FROM partnership_stack WHERE partnership_id = ?', [partnershipId]);
 
     const { movieIds } = await fetchTmdbPages(1, PAGES_PER_BATCH, filters);
 
     if (movieIds.length === 0) {
-      logger.warn({ roomId, filters }, 'No movies found for room stack');
+      logger.warn({ partnershipId, filters }, 'No movies found for partnership stack');
       await pool.query(
-        'UPDATE rooms SET stack_next_page = ?, stack_generating = 0, stack_exhausted = 1 WHERE id = ?',
-        [PAGES_PER_BATCH + 1, roomId],
+        'UPDATE partnerships SET stack_next_page = ?, stack_generating = 0, stack_exhausted = 1 WHERE id = ?',
+        [PAGES_PER_BATCH + 1, partnershipId],
       );
       return;
     }
 
-    const values = movieIds.map((movieId, index) => [roomId, movieId, index]);
-    await pool.query('INSERT IGNORE INTO room_stack (room_id, movie_id, position) VALUES ?', [
-      values,
-    ]);
-
+    const values = movieIds.map((movieId, index) => [partnershipId, movieId, index]);
     await pool.query(
-      'UPDATE rooms SET stack_next_page = ?, stack_generating = 0, stack_exhausted = 0 WHERE id = ?',
-      [PAGES_PER_BATCH + 1, roomId],
+      'INSERT IGNORE INTO partnership_stack (partnership_id, movie_id, position) VALUES ?',
+      [values],
     );
 
-    logger.info({ roomId, movieCount: movieIds.length }, 'Room stack generated');
+    await pool.query(
+      'UPDATE partnerships SET stack_next_page = ?, stack_generating = 0, stack_exhausted = 0 WHERE id = ?',
+      [PAGES_PER_BATCH + 1, partnershipId],
+    );
+
+    logger.info({ partnershipId, movieCount: movieIds.length }, 'Partnership stack generated');
   } catch (err) {
-    logger.error({ err, roomId }, 'Error generating room stack');
+    logger.error({ err, partnershipId }, 'Error generating partnership stack');
     throw err;
   }
 }
 
-export async function appendRoomStack(roomId: number): Promise<void> {
+export async function appendPartnershipStack(partnershipId: number): Promise<void> {
   let completed = false;
 
   try {
-    const [roomRows] = await pool.query<RoomStateRow[]>(
-      'SELECT stack_next_page, filters FROM rooms WHERE id = ?',
-      [roomId],
+    const [partnershipRows] = await pool.query<PartnershipStateRow[]>(
+      'SELECT stack_next_page, filters FROM partnerships WHERE id = ?',
+      [partnershipId],
     );
 
-    if (roomRows.length === 0) {
+    if (partnershipRows.length === 0) {
       completed = true;
       return;
     }
 
-    const startPage = roomRows[0].stack_next_page;
-    const filters: RoomFilters = roomRows[0].filters
-      ? (JSON.parse(roomRows[0].filters) as RoomFilters)
+    const startPage = partnershipRows[0].stack_next_page;
+    const filters: PartnershipFilters = partnershipRows[0].filters
+      ? (JSON.parse(partnershipRows[0].filters) as PartnershipFilters)
       : {};
 
     const { movieIds } = await fetchTmdbPages(startPage, PAGES_PER_BATCH, filters);
 
     if (movieIds.length === 0) {
-      await pool.query('UPDATE rooms SET stack_generating = 0, stack_exhausted = 1 WHERE id = ?', [
-        roomId,
-      ]);
+      await pool.query(
+        'UPDATE partnerships SET stack_generating = 0, stack_exhausted = 1 WHERE id = ?',
+        [partnershipId],
+      );
       completed = true;
-      logger.info({ roomId, startPage }, 'Room stack exhausted — no more TMDB pages');
+      logger.info({ partnershipId, startPage }, 'Partnership stack exhausted — no more TMDB pages');
       return;
     }
 
     const [maxRows] = await pool.query<MaxPositionRow[]>(
-      'SELECT MAX(position) AS maxPos FROM room_stack WHERE room_id = ?',
-      [roomId],
+      'SELECT MAX(position) AS maxPos FROM partnership_stack WHERE partnership_id = ?',
+      [partnershipId],
     );
     const startPosition = (maxRows[0].maxPos ?? -1) + 1;
 
     const uniqueIds = [...new Set(movieIds)];
-    const values = uniqueIds.map((movieId, index) => [roomId, movieId, startPosition + index]);
+    const values = uniqueIds.map((movieId, index) => [
+      partnershipId,
+      movieId,
+      startPosition + index,
+    ]);
     const [insertResult] = await pool.query<ResultSetHeader>(
-      'INSERT IGNORE INTO room_stack (room_id, movie_id, position) VALUES ?',
+      'INSERT IGNORE INTO partnership_stack (partnership_id, movie_id, position) VALUES ?',
       [values],
     );
 
     await pool.query(
-      'UPDATE rooms SET stack_next_page = ?, stack_generating = 0, stack_exhausted = 0 WHERE id = ?',
-      [startPage + PAGES_PER_BATCH, roomId],
+      'UPDATE partnerships SET stack_next_page = ?, stack_generating = 0, stack_exhausted = 0 WHERE id = ?',
+      [startPage + PAGES_PER_BATCH, partnershipId],
     );
 
     completed = true;
     logger.info(
-      { roomId, newMovies: insertResult.affectedRows, nextPage: startPage + PAGES_PER_BATCH },
-      'Room stack appended',
+      {
+        partnershipId,
+        newMovies: insertResult.affectedRows,
+        nextPage: startPage + PAGES_PER_BATCH,
+      },
+      'Partnership stack appended',
     );
   } catch (err) {
-    logger.error({ err, roomId }, 'Error appending room stack');
+    logger.error({ err, partnershipId }, 'Error appending partnership stack');
   } finally {
     if (!completed) {
       await pool
-        .query('UPDATE rooms SET stack_generating = 0 WHERE id = ?', [roomId])
+        .query('UPDATE partnerships SET stack_generating = 0 WHERE id = ?', [partnershipId])
         .catch(() => {});
     }
   }

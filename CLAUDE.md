@@ -19,7 +19,7 @@ Tinder-style Movie-Matching-App: zwei User swipen in einem gemeinsamen "Room" au
 - **Cache**: LRU (2000 Einträge, 1h TTL) für TMDB; 1h pro `movieId` für JustWatch
 - **Code-Quality**: ESLint (Flat Config + `typescript-eslint`) + Prettier; CI prüft `lint`, `format:check`, `typecheck`, `test`
 - **Deployment**: Railway — `https://watchd.up.railway.app` (`npm run build` → `npm start`, kein Dockerfile)
-- **Testing**: Vitest + Supertest gegen echte `watchd_test`-DB (Socket.io, APNs, Mail, TMDB, JustWatch, room-stack gemockt — `appendRoomStack` wird per `vi.importActual` in `room-stack-append.integration.test.ts` real gegen DB + gemocktes `global.fetch` getestet, `generateRoomStack` analog in `room-stack-generate.integration.test.ts` (Happy Path / Regen-Wipe / Exhausted / Fehlerpropagation); `movies.integration.test.ts` sichert den Lazy-Refill-Trigger in den Movie-Routes mit gemocktem `appendRoomStack` ab: `<=10` unseen, `stack_exhausted`, atomarer Lock bei Parallel-Requests. `socket.integration.test.ts` testet den echten `initSocket` (JWT-Verify + Room-Membership) via `vi.importActual` auf einem dedizierten httpServer + `socket.io-client` — der in `setup.ts` gestartete Shared-Server bleibt ohne Socket-Attachment). `pool: 'threads'`, `fileParallelism: false`, `isolate: false` — single Worker teilt Module (inkl. DB-Pool + httpServer) über alle Files. `setup.ts` initialisiert Server einmalig (idempotentes `beforeAll`, kein `afterAll` — Prozess-Exit räumt auf). Mock-Factories sind **idempotent** (Instanzen in `globalThis.__watchdMocks` gecached) — sonst erzeugt jede Factory-Ausführung pro File frische `vi.fn()`s und entkoppelt sie vom einmalig erzeugten App-Instanz → flaky Socket/Mail-Spy-Tests je nach File-Reihenfolge. `createApp({ skipRateLimiter: true })` für Tests. Design: echte Test-DB statt Mock (Migrations-Parität mit Prod); nur externe / Side-effect-Module gemockt. **Nicht getestet**: `token-cleanup.ts` (scheduled, kein deterministischer Testpunkt), APNs/Mail/TMDB/JustWatch (gemockt — Unit-Tests darüber bringen keinen Mehrwert), iOS (kein MVP-ROI), E2E, echte Concurrency jenseits der abgesicherten `stack_generating`-/`INSERT IGNORE`-Pfade.
+- **Testing**: Vitest + Supertest gegen echte `watchd_test`-DB (Socket.io, APNs, Mail, TMDB, JustWatch, partnership-stack gemockt — `appendPartnershipStack` wird per `vi.importActual` in `partnership-stack-append.integration.test.ts` real gegen DB + gemocktes `global.fetch` getestet, `generatePartnershipStack` analog in `partnership-stack-generate.integration.test.ts` (Happy Path / Regen-Wipe / Exhausted / Fehlerpropagation); `movies.integration.test.ts` sichert den Lazy-Refill-Trigger in den Movie-Routes mit gemocktem `appendPartnershipStack` ab: `<=10` unseen, `stack_exhausted`, atomarer Lock bei Parallel-Requests, 403 für Nicht-Mitglieder. `socket.integration.test.ts` testet den echten `initSocket` (JWT-Verify + Partnership-Membership) via `vi.importActual` auf einem dedizierten httpServer + `socket.io-client` — der in `setup.ts` gestartete Shared-Server bleibt ohne Socket-Attachment. `partnerships.integration.test.ts` deckt alle 8 Endpoints (request/accept/decline/cancel-request/list/detail/filters/delete) inkl. 4xx-Pfaden, Push-Spy, Socket-Spy und Cascade-Verifikation ab). `pool: 'threads'`, `fileParallelism: false`, `isolate: false` — single Worker teilt Module (inkl. DB-Pool + httpServer) über alle Files. `setup.ts` initialisiert Server einmalig (idempotentes `beforeAll`, kein `afterAll` — Prozess-Exit räumt auf). Mock-Factories sind **idempotent** (Instanzen in `globalThis.__watchdMocks` gecached) — sonst erzeugt jede Factory-Ausführung pro File frische `vi.fn()`s und entkoppelt sie vom einmalig erzeugten App-Instanz → flaky Socket/Mail-Spy-Tests je nach File-Reihenfolge. **`share-code.unit.test.ts` darf nicht `vi.spyOn(pool, 'query')` mit `mockRestore()` nutzen — unter `isolate: false` leakt der Spy file-übergreifend. Stattdessen `pool.query` direkt mit einem `vi.fn()` ersetzen und in `afterEach` per gespeicherter Referenz zurückschreiben.** `createApp({ skipRateLimiter: true })` für Tests. Design: echte Test-DB statt Mock (Migrations-Parität mit Prod); nur externe / Side-effect-Module gemockt. **Nicht getestet**: `token-cleanup.ts` (scheduled, kein deterministischer Testpunkt), APNs/Mail/TMDB/JustWatch (gemockt — Unit-Tests darüber bringen keinen Mehrwert), iOS (kein MVP-ROI), E2E, echte Concurrency jenseits der abgesicherten `stack_generating`-/`INSERT IGNORE`-Pfade.
 
 ### iOS App (`watchd/`)
 
@@ -40,44 +40,63 @@ watchd_backend-mac/src/
 ├── app.ts                # createApp({ skipRateLimiter? }) Factory:
 │                         # Middleware, Routes, /health, /.well-known/..., /reset-password,
 │                         # 404, Error-Middleware; returns { app, httpServer, parsedOrigins }
-│                         # Rate limits: auth 10/15min per IP, swipes 120/min per IP
+│                         # Rate limits: auth 10/15min per IP, swipes 120/min per IP,
+│                         # /api/partnerships/request 10/min per IP
 │                         # (skipRateLimiter=true für Tests)
 ├── config.ts             # Alle Env-Vars validiert beim Start (startup throw wenn Required fehlt)
 ├── logger.ts             # Pino (pino-pretty in development)
 ├── middleware/
-│   └── auth.ts           # JWT-Middleware; extrahiert userId, email, isGuest
+│   └── auth.ts           # JWT-Middleware; extrahiert userId, email
 ├── db/
 │   ├── connection.ts     # mysql2 Pool
-│   ├── schema.sql        # 9 Tabellen: users, refresh_tokens, password_reset_tokens,
-│   │                     # rooms, room_members, room_stack, swipes, matches, favorites
+│   ├── schema.sql        # 9 Tabellen (Partnerships-Schema): users, refresh_tokens,
+│   │                     # password_reset_tokens, partnerships, partnership_members,
+│   │                     # partnership_stack, swipes, matches, favorites
 │   └── apply-schema.ts   # Dev-only: auto-apply wenn WATCHD_APPLY_SCHEMA=1
 ├── routes/
-│   ├── auth.ts           # register, login, guest, refresh, upgrade,
+│   ├── auth.ts           # register (mit share_code-Generierung), login, refresh,
 │   │                     # forgot-password, reset-password, logout, delete-account
-│   ├── users.ts          # PATCH /me, POST /me/device-token
-│   ├── rooms.ts          # create, join, list, get, rename, update-filters, leave, archive-delete
-│   ├── movies.ts         # feed (paginiert), next-movie (einzeln)
+│   │                     # (kein /guest, kein /upgrade — Gast-Zugang entfällt)
+│   ├── users.ts          # PATCH /me, POST /me/device-token,
+│   │                     # GET /me/share-code, POST /me/share-code/regenerate
+│   ├── partnerships.ts   # request (Code-Lookup → pending), accept (Addressee → active +
+│   │                     # initialer Stack), decline (hard-delete), cancel-request
+│   │                     # (Requester-only), list ({incoming,outgoing,active}),
+│   │                     # detail, update-filters (regen Stack), delete (cascade +
+│   │                     # PARTNERSHIP_ENDED + disconnectSockets)
+│   ├── movies.ts         # feed?partnershipId=&afterPosition= (paginiert),
+│   │                     # /partnerships/:partnershipId/next-movie (einzeln).
 │   │                     # Refill-Trigger: wenn unseenMovies ≤ 10 → atomares stack_generating-Lock
-│   │                     # → fire-and-forget appendRoomStack(); stack_exhausted blockiert Trigger
-│   ├── swipes.ts         # POST /swipes → Matchmaking + Push
-│   └── matches.ts        # list, mark-watched, add/remove/list favorites
+│   │                     # → fire-and-forget appendPartnershipStack(); stack_exhausted blockiert Trigger
+│   ├── swipes.ts         # POST /swipes (partnershipId) → Matchmaking + Push
+│   └── matches.ts        # list (:partnershipId), mark-watched, add/remove/list favorites
 ├── services/
 │   ├── tmdb.ts           # TMDB API Client mit LRU-Cache
 │   ├── justwatch.ts      # JustWatch GraphQL; flatrate + free; iconPath für /icons/*.png
 │   ├── matchmaking.ts    # Kernlogik: alle Members swiped right → INSERT IGNORE (race-safe)
-│   ├── room-stack.ts     # generateRoomStack(roomId, filters): 5 TMDB-Pages → gefiltert → DB
-│   │                     # appendRoomStack(roomId): Lazy Refill — liest filters + stack_next_page
-│   │                     # aus DB, fetcht nächsten Batch (5 Seiten), INSERT IGNORE, setzt
-│   │                     # stack_next_page / stack_generating / stack_exhausted zurück
-│   ├── apns.ts           # APNs Push-Service
+│   │                     # auf partnership_id; liest aus partnership_members + swipes
+│   ├── partnership-stack.ts # generatePartnershipStack(partnershipId, filters): 5 TMDB-Pages
+│   │                     # → gefiltert → DB. appendPartnershipStack(partnershipId): Lazy Refill
+│   │                     # — liest filters + stack_next_page aus partnerships, fetcht nächsten
+│   │                     # Batch (5 Seiten), INSERT IGNORE, setzt stack_next_page /
+│   │                     # stack_generating / stack_exhausted zurück
+│   ├── share-code.ts     # generateShareCode() (8-char Crockford Base32),
+│   │                     # generateUniqueShareCode() mit max 5 Retries gegen
+│   │                     # users.share_code UNIQUE + Profanity-Blocklist
+│   ├── apns.ts           # APNs Push-Service: sendMatchPush (mit partnershipId+movieId
+│   │                     # Payload), sendPartnershipRequestPush, sendPartnershipAcceptedPush
 │   ├── mail.ts           # Password-Reset-Mail; deep link: watchd://reset-password?token=TOKEN
 │   └── token-cleanup.ts  # Scheduled Job (alle 6h, erster Run 30s nach Start):
-│                         # expired refresh tokens, used reset tokens,
-│                         # guest accounts >7d ohne aktive Session
+│                         # expired refresh tokens + used reset tokens
+│                         # (kein Guest-Cleanup mehr — Gast-Zugang entfällt)
 ├── socket/
-│   ├── index.ts          # JWT-Auth + Room-Membership-Check beim JOIN
+│   ├── index.ts          # JWT-Auth + (optional) Partnership-Membership-Check beim JOIN.
+│   │                     # JOIN-Payload: { token, partnershipId? }. Joint immer
+│   │                     # `user:<userId>` (für PARTNERSHIP_REQUEST/ACCEPTED) und —
+│   │                     # falls partnershipId — zusätzlich `partnership:<id>`.
 │   │                     # Emits: joined, error, match, partner_joined, partner_left,
-│   │                     #        room_dissolved, filters_updated
+│   │                     #        partnership_ended, partnership_request,
+│   │                     #        partnership_accepted, filters_updated
 │   └── events.ts         # Enum aller Socket.io Event-Namen
 └── tests/
     ├── global-setup.ts   # CREATE DATABASE watchd_test + schema.sql anwenden
@@ -86,23 +105,30 @@ watchd_backend-mac/src/
     │                     # Module wird einmalig pro Worker evaluiert (isolate:false) —
     │                     # beforeAll startet den Server nur wenn !httpServer.listening;
     │                     # beforeEach: truncateAll() + clearAllMocks(); kein afterAll
-    ├── helpers.ts        # createUser, createGuestUser, createRoom, joinRoom,
-    │                     # seedStackMovie, seedSwipe, seedMatch
+    ├── helpers.ts        # createUser, createPartnership, createPendingRequest,
+    │                     # seedStackMovie (partnership_stack), seedSwipe
+    │                     # (partnershipId), seedMatch (partnershipId)
     ├── unit/             # auth.unit (decodeRefreshToken), middleware.unit,
-    │                     # room-stack.unit (buildTmdbUrl)
-    └── integration/      # auth, swipes-matchmaking, rooms, movies
-                          # (Pagination, Swipe-Filter, Lazy-Refill-Trigger),
-                          # matches (watched-Toggle, Favorites, Offset-Pagination
-                          # mit expliziten Timestamps, Limit-Clamp auf 50,
-                          # Member-403), users (PATCH /me, device-token),
-                          # room-stack-append (Lazy-Refill: Lock, Page-Increment,
-                          # Exhausted-Flag, Dedup, Fehlerpfad),
-                          # room-stack-generate (Initial-Generation: Happy Path,
-                          # Regen-Wipe, Exhausted, Fehlerpropagation — beide nutzen
-                          # vi.importActual + gemocktes global.fetch),
-                          # socket (JOIN-Handshake: JWT-Verify + Room-Membership —
-                          # nutzt vi.importActual + eigenen httpServer +
-                          # socket.io-client; Shared-Server bleibt unberührt)
+    │                     # partnership-stack.unit (buildTmdbUrl),
+    │                     # share-code.unit (Alphabet, Länge, Profanity,
+    │                     # Kollisions-Retry, Throw nach 5 Kollisionen)
+    └── integration/      # auth (Register-share_code, Cascade auf Partnerships),
+                          # swipes-matchmaking, partnerships (alle 8 Endpoints +
+                          # 4xx-Pfade), movies (Pagination, Swipe-Filter,
+                          # Lazy-Refill-Trigger, Member-403), matches (watched-
+                          # Toggle, Favorites, Offset-Pagination mit expliziten
+                          # Timestamps, Limit-Clamp auf 50, Member-403),
+                          # users (PATCH /me, device-token, share-code GET/regen),
+                          # partnership-stack-append (Lazy-Refill: Lock,
+                          # Page-Increment, Exhausted-Flag, Dedup, Fehlerpfad),
+                          # partnership-stack-generate (Initial-Generation:
+                          # Happy Path, Regen-Wipe, Exhausted, Fehler-
+                          # propagation — beide nutzen vi.importActual +
+                          # gemocktes global.fetch),
+                          # socket (JOIN-Handshake: JWT-Verify + Partnership-
+                          # Membership, optionale partnershipId für user-only
+                          # channel — nutzt vi.importActual + eigenen httpServer
+                          # + socket.io-client; Shared-Server bleibt unberührt)
 
 watchd/watchd/
 ├── watchdApp.swift       # @main; deep link handling; environment objects: AuthViewModel, NetworkMonitor
@@ -120,26 +146,35 @@ watchd/watchd/
 │   ├── APIService.swift      # actor — thread-safe async/await URLSession; Auto-refresh bei 401
 │   │                         # isRefreshing-Flag verhindert parallele Refreshes; Timeout: 30s
 │   ├── KeychainHelper.swift  # Keys: jwt_token, jwt_refresh_token, user_id, user_name,
-│   │                         #       user_email, is_guest
+│   │                         #       user_email (is_guest in Phase 6 entfernt)
 │   ├── NetworkMonitor.swift  # @MainActor ObservableObject; NWPathMonitor → @Published isConnected
 │   └── SocketService.swift   # @MainActor Singleton; Publishers: matchPublisher,
 │                             # filtersUpdatedPublisher, partnerLeftPublisher,
 │                             # partnerJoinedPublisher, roomDissolvedPublisher
 │                             # Lazy connect — nur beim Betreten der SwipeView
 └── ViewModels/
-    ├── AuthViewModel.swift    # Singleton (AuthViewModel.shared); loadSession() aus Keychain;
-    │                          # login, register, guestLogin, upgradeAccount, updateName,
-    │                          # logout, deleteAccount; requestPushPermissionIfNeeded();
-    │                          # setupUnauthorizedListener() reagiert auf 401s
-    ├── HomeViewModel.swift    # loadRooms(), loadArchivedRooms(), createRoom, joinRoom,
-    │                          # selectRoom, updateRoomName, leaveRoom; min 450ms Ladeanimation
-    ├── SwipeViewModel.swift   # fetchFeed(roomId, page) — paginiert (20/page), lazy load bei ≤5
-    │                          # handleDrag + commitSwipe — 100pt Threshold, 0.25s fly-out
-    │                          # Subscriptions: match, filtersUpdated, partnerLeft, roomDissolved
-    │                          # reconnectSocketIfNeeded() beim App-Foreground
-    ├── MatchesViewModel.swift # fetchMatches() paginiert; mehr laden bei letzten 5; min 450ms
-    └── FavoritesViewModel.swift # loadFavorites(), toggleFavorite(), removeFavorite(), isFavorite()
-                                 # paginiert; mehr laden bei letzten 5; min 450ms
+    ├── AuthViewModel.swift       # Singleton (AuthViewModel.shared); loadSession() aus Keychain;
+    │                             # login, register, updateName, logout, deleteAccount;
+    │                             # requestPushPermissionIfNeeded();
+    │                             # setupUnauthorizedListener() reagiert auf 401s
+    │                             # (guestLogin / upgradeAccount in Phase 6 entfernt)
+    ├── PartnersViewModel.swift   # loadPartnerships() liefert {incoming, outgoing, active};
+    │                             # acceptRequest / declineRequest / cancelRequest /
+    │                             # deletePartnership / updateFilters mit optimistic update;
+    │                             # subscribt partnershipRequest / partnershipAccepted /
+    │                             # partnershipEnded; min 450ms Ladeanimation
+    ├── AddPartnerViewModel.swift # Code-Eingabe (Crockford-Base32, 8 Chars normalisiert);
+    │                             # submit(onSuccess:) → requestPartnership
+    ├── SwipeViewModel.swift      # init(partnership:); fetchFeed(afterPosition) paginiert
+    │                             # (20/page), lazy load bei ≤5; handleDrag + commitSwipe —
+    │                             # 100pt Threshold, 0.25s fly-out
+    │                             # Subscriptions: match, partnerFiltersUpdated, partnerLeft,
+    │                             # partnershipEnded; reconnectSocketIfNeeded() beim
+    │                             # App-Foreground
+    ├── MatchesViewModel.swift    # init(partnershipId:); fetchMatches() paginiert; mehr
+    │                             # laden bei letzten 5; min 450ms
+    └── FavoritesViewModel.swift  # loadFavorites(), toggleFavorite(), removeFavorite(),
+                                   # isFavorite(); paginiert; mehr laden bei letzten 5; min 450ms
 
 Views/                         # alle SwiftUI-Screens (Xcode 16 erfasst neue Dateien automatisch)
 ├── AuthView.swift             # Login / Register / Guest / Forgot-Password Entry-Screen
@@ -307,51 +342,50 @@ Für Runtime-/Codepfad-Incidents siehe `docs/troubleshooting.md`.
 
 ## API-Routen
 
-| Method   | Path                                      | Beschreibung                                                                                                        |
-| -------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `POST`   | `/api/auth/register`                      | Vollkonto anlegen (name, email, password)                                                                           |
-| `POST`   | `/api/auth/login`                         | Email + Password Login                                                                                              |
-| `POST`   | `/api/auth/guest`                         | Anonymer Guest (generierter dt. Name)                                                                               |
-| `POST`   | `/api/auth/refresh`                       | Token-Rotation (theft detection via family_id)                                                                      |
-| `POST`   | `/api/auth/upgrade`                       | Guest → Vollkonto (email + password hinzufügen)                                                                     |
-| `POST`   | `/api/auth/forgot-password`               | Password-Reset-Mail senden                                                                                          |
-| `POST`   | `/api/auth/reset-password`                | Password mit One-Time-Token zurücksetzen                                                                            |
-| `POST`   | `/api/auth/logout`                        | Aktuellen Refresh-Token revoken                                                                                     |
-| `DELETE` | `/api/auth/delete-account`                | Account + alle Daten löschen (GDPR/Apple)                                                                           |
-| `PATCH`  | `/api/users/me`                           | Username ändern                                                                                                     |
-| `POST`   | `/api/users/me/device-token`              | APNs Device-Token registrieren                                                                                      |
-| `POST`   | `/api/rooms`                              | Room erstellen (optional: name, filters) → room_stack generieren                                                    |
-| `POST`   | `/api/rooms/join`                         | Beitreten via 6-char Code (max 2 Members)                                                                           |
-| `GET`    | `/api/rooms`                              | Rooms des Users: `is_active = true` **ODER** `status = 'dissolved'` (Client filtert aktiv/archiviert per `status`)  |
-| `GET`    | `/api/rooms/:id`                          | Room-Details + Member-Liste                                                                                         |
-| `PATCH`  | `/api/rooms/:id`                          | Room umbenennen                                                                                                     |
-| `PATCH`  | `/api/rooms/:id/filters`                  | Filter updaten → room_stack neu generieren + `filters_updated` emittieren                                           |
-| `DELETE` | `/api/rooms/:id/leave`                    | Room verlassen (hard-delete wenn nie genutzt; archivieren wenn genutzt)                                             |
-| `DELETE` | `/api/rooms/:id/archive`                  | Archivierten Room hard-deleten                                                                                      |
-| `GET`    | `/api/movies/rooms/:roomId/next-movie`    | Nächster ungeswiped Film (inkl. Streaming)                                                                          |
-| `GET`    | `/api/movies/feed?roomId=&afterPosition=` | 20 ungeswiped Filme paginiert (inkl. Streaming); Keyset-Cursor via `afterPosition`; Response enthält `lastPosition` |
-| `POST`   | `/api/swipes`                             | Swipe aufzeichnen (left\|right); rechts → Matchmaking + Push                                                        |
-| `GET`    | `/api/matches/:roomId`                    | Matches paginiert (default 20, max 50)                                                                              |
-| `PATCH`  | `/api/matches/:matchId`                   | watched/unwatched togglen                                                                                           |
-| `POST`   | `/api/matches/favorites`                  | Film zu Favoriten hinzufügen                                                                                        |
-| `DELETE` | `/api/matches/favorites/:movieId`         | Favorit entfernen                                                                                                   |
-| `GET`    | `/api/matches/favorites/list`             | Favoriten paginiert (default 20, max 50)                                                                            |
-| `GET`    | `/health`                                 | Liveness: `{status, db: ok\|error, tmdb: ok\|error, uptime}`                                                        |
+| Method   | Path                                                 | Beschreibung                                                                                                         |
+| -------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `POST`   | `/api/auth/register`                                 | Vollkonto anlegen (name, email, password) — generiert Share-Code                                                     |
+| `POST`   | `/api/auth/login`                                    | Email + Password Login                                                                                               |
+| `POST`   | `/api/auth/refresh`                                  | Token-Rotation (theft detection via family_id)                                                                       |
+| `POST`   | `/api/auth/forgot-password`                          | Password-Reset-Mail senden                                                                                           |
+| `POST`   | `/api/auth/reset-password`                           | Password mit One-Time-Token zurücksetzen                                                                             |
+| `POST`   | `/api/auth/logout`                                   | Aktuellen Refresh-Token revoken                                                                                      |
+| `DELETE` | `/api/auth/delete-account`                           | Account + alle Daten löschen (GDPR/Apple)                                                                            |
+| `PATCH`  | `/api/users/me`                                      | Username ändern                                                                                                      |
+| `POST`   | `/api/users/me/device-token`                         | APNs Device-Token registrieren                                                                                       |
+| `GET`    | `/api/users/me/share-code`                           | Eigener Share-Code (`{ shareCode }`)                                                                                 |
+| `POST`   | `/api/users/me/share-code/regenerate`                | Code neu generieren — alter wird sofort ungültig                                                                     |
+| `POST`   | `/api/partnerships/request`                          | Anfrage via `{ shareCode }` — 400 (eigener Code), 404 (Code unbekannt), 409 (Partnerschaft existiert), Push + Socket |
+| `POST`   | `/api/partnerships/:id/accept`                       | Addressee bestätigt → status=active, Stack generieren, Socket + Push an Requester                                    |
+| `POST`   | `/api/partnerships/:id/decline`                      | Addressee lehnt ab → hard-delete                                                                                     |
+| `DELETE` | `/api/partnerships/:id/cancel-request`               | Requester zieht ausstehende Anfrage zurück → hard-delete                                                             |
+| `GET`    | `/api/partnerships`                                  | `{ incoming: [...], outgoing: [...], active: [...] }` mit Partner-User                                               |
+| `GET`    | `/api/partnerships/:id`                              | Detail: `{ partnership: { ..., partner: { id, name } } }`                                                            |
+| `PATCH`  | `/api/partnerships/:id/filters`                      | Filter updaten → Stack neu generieren + `filters_updated` emittieren                                                 |
+| `DELETE` | `/api/partnerships/:id`                              | Partnerschaft beenden (cascade-delete) + `partnership_ended` + `disconnectSockets`                                   |
+| `GET`    | `/api/movies/partnerships/:partnershipId/next-movie` | Nächster ungeswiped Film (inkl. Streaming)                                                                           |
+| `GET`    | `/api/movies/feed?partnershipId=&afterPosition=`     | 20 ungeswiped Filme paginiert (inkl. Streaming); Keyset-Cursor via `afterPosition`; Response enthält `lastPosition`  |
+| `POST`   | `/api/swipes`                                        | Body `{ partnershipId, movieId, direction }`; rechts → Matchmaking + Push                                            |
+| `GET`    | `/api/matches/:partnershipId`                        | Matches paginiert (default 20, max 50)                                                                               |
+| `PATCH`  | `/api/matches/:matchId`                              | watched/unwatched togglen                                                                                            |
+| `POST`   | `/api/matches/favorites`                             | Film zu Favoriten hinzufügen                                                                                         |
+| `DELETE` | `/api/matches/favorites/:movieId`                    | Favorit entfernen                                                                                                    |
+| `GET`    | `/api/matches/favorites/list`                        | Favoriten paginiert (default 20, max 50)                                                                             |
+| `GET`    | `/health`                                            | Liveness: `{status, db: ok\|error, tmdb: ok\|error, uptime}`                                                         |
 
 ---
 
 ## Kernlogik & Flows
 
 **Match-Flow:**
-`POST /swipes` → `matchmaking.checkAndCreateMatch()` → alle Members swiped right → `INSERT IGNORE INTO matches` (atomic, race-safe via `UNIQUE KEY unique_room_movie`) → `affectedRows=0` = anderer Request hat gewonnen → early return → Film-Details + JustWatch-Offers holen → `match` Socket.io Event an `room:<id>` → `device_token` aller Members → `sendMatchPush()` via APNs
+`POST /swipes` → `matchmaking.checkAndCreateMatch()` → alle `partnership_members` swiped right → `INSERT IGNORE INTO matches (partnership_id, movie_id)` (atomic, race-safe via `UNIQUE KEY unique_partnership_movie`) → `affectedRows=0` = anderer Request hat gewonnen → early return → Film-Details + JustWatch-Offers holen → `match` Socket.io Event an `partnership:<id>` → `device_token` aller Partnership-Members → `sendMatchPush()` via APNs (Payload enthält `partnershipId` + `movieId`).
 
-**Room-Status-Machine:**
+**Partnership-Lifecycle:**
 
-- `waiting` (1 Member) → `active` (2. Member tritt bei)
-- `active` → `waiting` (ein Member verlässt)
-- `waiting`/`active` → `dissolved` (letzter Member verlässt nach Nutzung)
-- Nie genutzte Rooms werden sofort hard-deleted
-- `GET /api/rooms` gibt alle Rooms zurück, bei denen der User entweder noch `is_active = true` ist **oder** der Raum bereits `dissolved` ist (und nicht aus dem Archiv gelöscht). Wer zuerst verlässt, sieht den Raum bis zum Dissolve nicht — sobald der Partner auch geht, taucht er im eigenen Archiv auf. `is_active = true` allein würde Dissolve-Sichtbarkeit für den Erstverlasser killen (Bug vor `8dd99a8`).
+- `pending` (Anfrage gesendet, nur Requester ist `partnership_members`) → `active` (Addressee accepted, Stack wird initial generiert, beide Members)
+- `active` → gelöscht (einer der beiden ruft `DELETE /api/partnerships/:id` → cascade räumt Members/Stack/Swipes/Matches; `partnership_ended`-Socket-Event + `disconnectSockets` auf `partnership:<id>`)
+- `pending` → gelöscht (Addressee declined oder Requester cancelled — beide Wege: hard-delete via cascade)
+- `GET /api/partnerships` liefert getrennt `incoming` / `outgoing` / `active` — Client rendert die Sections separat.
 
 **JWT-Strategie:**
 Short-lived Access-Tokens + Refresh-Token-Rotation. Wiederverwendung eines revoked Tokens innerhalb derselben `family_id` invalidiert die gesamte Familie (theft detection).
@@ -452,11 +486,11 @@ Xcode-Pflicht: Push Notifications Capability via Signing & Capabilities → erze
 
 ## Offene Punkte
 
-| Status        | Thema                                                                                                                                                                                                                                                                                                |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **in Arbeit** | Partnerships-Refactor: Rooms → persistente Partnerschaften, Gast-Zugang weg, Share-Codes mit Double-Opt-In, Apple Sign-In. Plan + Phasen: `docs/partnerships-refactor-plan.md` (Parent-Repo). Branch: `refactor/partnerships`                                                                          |
-| **erledigt**  | CI: GitHub Actions mit MySQL-8-Service-Container (`.github/workflows/test.yml`), Typecheck + Tests auf jedem PR; Branch-Protection auf `main` blockiert direkte Pushes (siehe `CONTRIBUTING.md`)                                                                                                     |
-| **erledigt**  | Design Overhaul iOS: Einziges Theme **Velvet Hour** (cool dark, Champagne-Accent, Bluu Next + Manrope) + Bottom-Tab-Navigation. Design-Kontext in `watchd/.impeccable.md`. Phasen 0–5 + Vereinfachung abgeschlossen (2026-04-24): Theme-Foundation, MainTabView + ProfileView + RoomsView, alle Screens editorial redesigned, WatchdTheme-Shim gelöscht, ThemeManager entfernt (kein Switcher), Theme statisch injiziert (`.environment(\.theme, .velvetHour)` + `.preferredColorScheme(.dark)`). BluuNext (Bold + BoldItalic) + Manrope (Regular/Medium/SemiBold/Bold) liegen unter `watchd/watchd/Fonts/`, `FontRegistry.registerAll()` registriert sie beim App-Launch. Keine Backend-Änderungen. |
-| **post-MVP**  | Room-Namen editieren in UI (Route existiert, UI fehlt)                                                                                                                                                                                                                                               |
-| **post-MVP**  | Pino-Logs strukturiert in Datei / Logdienst (aktuell nur stdout)                                                                                                                                                                                                                                     |
-| **post-MVP**  | App Store Assets (Screenshots, App-Icon alle Größen)                                                                                                                                                                                                                                                 |
+| Status        | Thema                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **in Arbeit** | Partnerships-Refactor: Rooms → persistente Partnerschaften, Gast-Zugang weg, Share-Codes mit Double-Opt-In, Apple Sign-In. Plan + Phasen: `docs/partnerships-refactor-plan.md` (Parent-Repo). Branch: `refactor/partnerships`. **Phasen 1–7 fertig** (2026-04-26): Backend (Schema/Services/Routes/Socket/Tests, 117 Tests grün) und iOS-Stack (Models/Services/ViewModels/Views) sind komplett umgebaut. **Phase 7 (iOS Views)**: `PartnersView` (Section-List Eingehend/Partner/Ausstehend) ersetzt `RoomsView`; neue `AddPartnerSheet`, `PartnerFiltersView`, Overflow-Views `PendingRequestsView` / `OutgoingRequestsView` / `AllPartnersView`. `SwipeView.init(partnership:)`, `MatchView`/`MatchesListView` auf `partnershipId`, `Match.partnershipId` korrigiert (war noch `roomId`). `AuthView`: Guest-Button raus + Apple-Placeholder-TODO. `ProfileView`: Archiv + Konto-sichern raus, „Dein Code"-Section mit Copy + Regenerate (Confirm-Alert). `MainTabView`-Tab heißt jetzt „Partner". `watchdApp`: `watchd://join/...` Deep-Link entfernt. **Cleanup**: 6 Legacy-Views gelöscht (`RoomsView`, `RoomFiltersView`, `CreateRoomSheet`, `ArchivedRoomsView`, `GuestUpgradePromptSheet`, `UpgradeAccountView`), `RoomModels.swift` weg, alle Room-Methoden aus `APIService` (`createRoom`/`joinRoom`/`getRoom(s)`/`updateRoom*`/`leaveRoom`/`deleteFromArchive`/`getMovieFeed`/`getNextMovie`/`submitSwipe`/`getMatches`) und `SocketService.connect(token:roomId:)` + `roomDissolvedPublisher` + `filtersUpdatedPublisher<RoomFilters>` raus. Build muss noch in Xcode verifiziert werden — User kümmert sich. Phase 8 (Deep-Links `watchd://add/CODE` + Push-Payloads) und Phase 9 (Apple Sign-In) als nächstes. |
+| **erledigt**  | CI: GitHub Actions mit MySQL-8-Service-Container (`.github/workflows/test.yml`), Typecheck + Tests auf jedem PR; Branch-Protection auf `main` blockiert direkte Pushes (siehe `CONTRIBUTING.md`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **erledigt**  | Design Overhaul iOS: Einziges Theme **Velvet Hour** (cool dark, Champagne-Accent, Bluu Next + Manrope) + Bottom-Tab-Navigation. Design-Kontext in `watchd/.impeccable.md`. Phasen 0–5 + Vereinfachung abgeschlossen (2026-04-24): Theme-Foundation, MainTabView + ProfileView + RoomsView, alle Screens editorial redesigned, WatchdTheme-Shim gelöscht, ThemeManager entfernt (kein Switcher), Theme statisch injiziert (`.environment(\.theme, .velvetHour)` + `.preferredColorScheme(.dark)`). BluuNext (Bold + BoldItalic) + Manrope (Regular/Medium/SemiBold/Bold) liegen unter `watchd/watchd/Fonts/`, `FontRegistry.registerAll()` registriert sie beim App-Launch. Keine Backend-Änderungen.                                                                                                                                                                                                            |
+| **post-MVP**  | Room-Namen editieren in UI (Route existiert, UI fehlt)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **post-MVP**  | Pino-Logs strukturiert in Datei / Logdienst (aktuell nur stdout)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **post-MVP**  | App Store Assets (Screenshots, App-Icon alle Größen)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |

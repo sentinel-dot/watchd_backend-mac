@@ -11,7 +11,7 @@ import { pool } from './db/connection';
 
 import authRouter from './routes/auth';
 import usersRouter from './routes/users';
-import roomsRouter from './routes/rooms';
+import partnershipsRouter from './routes/partnerships';
 import moviesRouter from './routes/movies';
 import swipesRouter from './routes/swipes';
 import matchesRouter from './routes/matches';
@@ -74,15 +74,25 @@ export function createApp(options?: CreateAppOptions): CreateAppResult {
       legacyHeaders: false,
     });
 
+    // 10 partnership requests/min/IP — Enumeration-Schutz für Share-Codes.
+    const partnershipRequestLimiter = rateLimit({
+      windowMs: 60_000,
+      max: 10,
+      message: { error: 'Zu viele Anfragen. Bitte kurz warten.' },
+      standardHeaders: true,
+      legacyHeaders: false,
+    });
+
     app.use('/api/auth/login', authLimiter);
     app.use('/api/auth/register', authLimiter);
     app.use('/api/auth/forgot-password', authLimiter);
     app.use('/api/swipes', swipeLimiter);
+    app.use('/api/partnerships/request', partnershipRequestLimiter);
   }
 
   app.use('/api/auth', authRouter);
   app.use('/api/users', usersRouter);
-  app.use('/api/rooms', roomsRouter);
+  app.use('/api/partnerships', partnershipsRouter);
   app.use('/api/movies', moviesRouter);
   app.use('/api/swipes', swipesRouter);
   app.use('/api/matches', matchesRouter);

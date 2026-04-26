@@ -9,7 +9,9 @@ export const SocketEvents = {
   MATCH: 'match',
   PARTNER_JOINED: 'partner_joined',
   PARTNER_LEFT: 'partner_left',
-  ROOM_DISSOLVED: 'room_dissolved',
+  PARTNERSHIP_ENDED: 'partnership_ended',
+  PARTNERSHIP_REQUEST: 'partnership_request',
+  PARTNERSHIP_ACCEPTED: 'partnership_accepted',
   FILTERS_UPDATED: 'filters_updated',
 } as const;
 

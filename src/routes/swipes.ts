@@ -22,14 +22,14 @@ interface DeviceTokenRow extends RowDataPacket {
 
 router.post('/', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as AuthRequest).user.userId;
-  const { movieId, roomId, direction } = req.body as {
+  const { movieId, partnershipId, direction } = req.body as {
     movieId?: number;
-    roomId?: number;
+    partnershipId?: number;
     direction?: string;
   };
 
-  if (!movieId || !roomId || !direction) {
-    res.status(400).json({ error: 'movieId, roomId und direction sind erforderlich' });
+  if (!movieId || !partnershipId || !direction) {
+    res.status(400).json({ error: 'movieId, partnershipId und direction sind erforderlich' });
     return;
   }
 
@@ -40,61 +40,69 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
 
   try {
     const [membership] = await pool.query<MembershipRow[]>(
-      'SELECT user_id FROM room_members WHERE room_id = ? AND user_id = ?',
-      [roomId, userId],
+      'SELECT user_id FROM partnership_members WHERE partnership_id = ? AND user_id = ?',
+      [partnershipId, userId],
     );
     if (membership.length === 0) {
-      res.status(403).json({ error: 'Kein Mitglied dieses Rooms' });
+      res.status(403).json({ error: 'Kein Mitglied dieser Partnerschaft' });
       return;
     }
 
     await pool.query(
-      `INSERT INTO swipes (user_id, movie_id, room_id, direction)
+      `INSERT INTO swipes (user_id, movie_id, partnership_id, direction)
        VALUES (?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE direction = VALUES(direction), swiped_at = CURRENT_TIMESTAMP`,
-      [userId, movieId, roomId, direction],
+      [userId, movieId, partnershipId, direction],
     );
 
-    await pool.query('UPDATE rooms SET last_activity_at = NOW() WHERE id = ?', [roomId]);
+    await pool.query('UPDATE partnerships SET last_activity_at = NOW() WHERE id = ?', [
+      partnershipId,
+    ]);
 
     let matchResult = null;
 
     if (direction === 'right') {
-      const result = await checkAndCreateMatch(userId, movieId, roomId);
+      const result = await checkAndCreateMatch(userId, movieId, partnershipId);
 
       if (result.isMatch) {
         matchResult = result;
         const io = getIo();
-        io.to(`room:${roomId}`).emit(SocketEvents.MATCH, {
+        io.to(`partnership:${partnershipId}`).emit(SocketEvents.MATCH, {
           movieId: result.movieId,
           movieTitle: result.movieTitle,
           posterPath: result.posterPath,
           streamingOptions: result.streamingOptions ?? [],
         });
 
-        // Send push notifications to all room members who have a device token
+        // Push-Notifications an alle Partner mit hinterlegtem Device-Token.
         const [tokenRows] = await pool.query<DeviceTokenRow[]>(
           `SELECT u.device_token FROM users u
-           INNER JOIN room_members rm ON rm.user_id = u.id
-           WHERE rm.room_id = ? AND u.device_token IS NOT NULL`,
-          [roomId],
+           INNER JOIN partnership_members pm ON pm.user_id = u.id
+           WHERE pm.partnership_id = ? AND u.device_token IS NOT NULL`,
+          [partnershipId],
         );
         const tokens = tokenRows.map((r) => r.device_token).filter((t): t is string => t !== null);
-        logger.info({ roomId, tokenCount: tokens.length }, 'APNs: device tokens found for room');
+        logger.info(
+          { partnershipId, tokenCount: tokens.length },
+          'APNs: device tokens found for partnership',
+        );
         if (tokens.length > 0) {
-          sendMatchPush(tokens, result.movieTitle ?? 'einem Film').catch((err) =>
-            logger.error({ err }, 'APNs push failed'),
-          );
+          sendMatchPush(
+            tokens,
+            result.movieTitle ?? 'einem Film',
+            partnershipId,
+            result.movieId ?? movieId,
+          ).catch((err) => logger.error({ err }, 'APNs push failed'));
         }
       }
     }
 
     res.status(201).json({
-      swipe: { user_id: userId, movie_id: movieId, room_id: roomId, direction },
+      swipe: { user_id: userId, movie_id: movieId, partnership_id: partnershipId, direction },
       match: matchResult,
     });
   } catch (err) {
-    logger.error({ err, userId, movieId, roomId }, 'Swipe error');
+    logger.error({ err, userId, movieId, partnershipId }, 'Swipe error');
     res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });

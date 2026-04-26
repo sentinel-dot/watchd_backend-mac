@@ -35,7 +35,7 @@ async function mapWithConcurrency<T, R>(
 
 interface MatchRow extends RowDataPacket {
   id: number;
-  room_id: number;
+  partnership_id: number;
   movie_id: number;
   matched_at: Date;
   watched: boolean | number | null;
@@ -55,93 +55,101 @@ interface FavoriteRow extends RowDataPacket {
   created_at: Date;
 }
 
-router.get('/:roomId', authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const userId = (req as AuthRequest).user.userId;
-  const roomId = parseInt(req.params['roomId'], 10);
-  const limit = Math.min(Math.max(parseInt(req.query['limit'] as string, 10) || 20, 1), 50);
-  const offset = Math.max(parseInt(req.query['offset'] as string, 10) || 0, 0);
+router.get(
+  '/:partnershipId',
+  authMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = (req as AuthRequest).user.userId;
+    const partnershipId = parseInt(req.params['partnershipId'], 10);
+    const limit = Math.min(Math.max(parseInt(req.query['limit'] as string, 10) || 20, 1), 50);
+    const offset = Math.max(parseInt(req.query['offset'] as string, 10) || 0, 0);
 
-  if (isNaN(roomId)) {
-    res.status(400).json({ error: 'Ungueltige Room-ID' });
-    return;
-  }
-
-  try {
-    const [membership] = await pool.query<MembershipRow[]>(
-      'SELECT user_id FROM room_members WHERE room_id = ? AND user_id = ?',
-      [roomId, userId],
-    );
-    if (membership.length === 0) {
-      res.status(403).json({ error: 'Kein Mitglied dieses Rooms' });
+    if (isNaN(partnershipId)) {
+      res.status(400).json({ error: 'Ungueltige Partnership-ID' });
       return;
     }
 
-    const [countResult] = await pool.query<CountRow[]>(
-      'SELECT COUNT(*) AS total FROM matches WHERE room_id = ?',
-      [roomId],
-    );
-    const total = countResult[0].total;
-
-    const [matchRows] = await pool.query<MatchRow[]>(
-      'SELECT id, room_id, movie_id, matched_at, COALESCE(watched, FALSE) AS watched FROM matches WHERE room_id = ? ORDER BY matched_at DESC LIMIT ? OFFSET ?',
-      [roomId, limit, offset],
-    );
-
-    const matches = await mapWithConcurrency(matchRows, 6, async (match: MatchRow) => {
-      try {
-        const movie = await getMovieById(match.movie_id);
-        const releaseYear = movie.release_date
-          ? parseInt(movie.release_date.slice(0, 4), 10)
-          : new Date().getFullYear();
-
-        const streamingOptions = await getStreamingOffers(match.movie_id, movie.title, releaseYear);
-
-        return {
-          id: match.id,
-          roomId: match.room_id,
-          matchedAt: match.matched_at,
-          watched: Boolean(match.watched),
-          movie: {
-            id: movie.id,
-            title: movie.title,
-            overview: movie.overview,
-            posterPath: movie.poster_path,
-            backdropPath: movie.backdrop_path,
-            releaseDate: movie.release_date,
-            voteAverage: movie.vote_average,
-          },
-          streamingOptions,
-        };
-      } catch (err) {
-        logger.warn(
-          { err, matchId: match.id, movieId: match.movie_id },
-          'Failed to fetch movie details for match',
-        );
-        return {
-          id: match.id,
-          roomId: match.room_id,
-          matchedAt: match.matched_at,
-          watched: Boolean(match.watched),
-          movie: {
-            id: match.movie_id,
-            title: 'Unknown Movie',
-            overview: '',
-            posterPath: null,
-            backdropPath: null,
-            releaseDate: null,
-            voteAverage: 0,
-          },
-          streamingOptions: [],
-        };
+    try {
+      const [membership] = await pool.query<MembershipRow[]>(
+        'SELECT user_id FROM partnership_members WHERE partnership_id = ? AND user_id = ?',
+        [partnershipId, userId],
+      );
+      if (membership.length === 0) {
+        res.status(403).json({ error: 'Kein Mitglied dieser Partnerschaft' });
+        return;
       }
-    });
 
-    res.json({ matches, pagination: { total, limit, offset, hasMore: offset + limit < total } });
-  } catch (err) {
-    logger.error({ err, userId, roomId }, 'Get matches error');
-    res.status(500).json({ error: 'Interner Serverfehler' });
-  }
-});
+      const [countResult] = await pool.query<CountRow[]>(
+        'SELECT COUNT(*) AS total FROM matches WHERE partnership_id = ?',
+        [partnershipId],
+      );
+      const total = countResult[0].total;
+
+      const [matchRows] = await pool.query<MatchRow[]>(
+        'SELECT id, partnership_id, movie_id, matched_at, COALESCE(watched, FALSE) AS watched FROM matches WHERE partnership_id = ? ORDER BY matched_at DESC LIMIT ? OFFSET ?',
+        [partnershipId, limit, offset],
+      );
+
+      const matches = await mapWithConcurrency(matchRows, 6, async (match: MatchRow) => {
+        try {
+          const movie = await getMovieById(match.movie_id);
+          const releaseYear = movie.release_date
+            ? parseInt(movie.release_date.slice(0, 4), 10)
+            : new Date().getFullYear();
+
+          const streamingOptions = await getStreamingOffers(
+            match.movie_id,
+            movie.title,
+            releaseYear,
+          );
+
+          return {
+            id: match.id,
+            partnershipId: match.partnership_id,
+            matchedAt: match.matched_at,
+            watched: Boolean(match.watched),
+            movie: {
+              id: movie.id,
+              title: movie.title,
+              overview: movie.overview,
+              posterPath: movie.poster_path,
+              backdropPath: movie.backdrop_path,
+              releaseDate: movie.release_date,
+              voteAverage: movie.vote_average,
+            },
+            streamingOptions,
+          };
+        } catch (err) {
+          logger.warn(
+            { err, matchId: match.id, movieId: match.movie_id },
+            'Failed to fetch movie details for match',
+          );
+          return {
+            id: match.id,
+            partnershipId: match.partnership_id,
+            matchedAt: match.matched_at,
+            watched: Boolean(match.watched),
+            movie: {
+              id: match.movie_id,
+              title: 'Unknown Movie',
+              overview: '',
+              posterPath: null,
+              backdropPath: null,
+              releaseDate: null,
+              voteAverage: 0,
+            },
+            streamingOptions: [],
+          };
+        }
+      });
+
+      res.json({ matches, pagination: { total, limit, offset, hasMore: offset + limit < total } });
+    } catch (err) {
+      logger.error({ err, userId, partnershipId }, 'Get matches error');
+      res.status(500).json({ error: 'Interner Serverfehler' });
+    }
+  },
+);
 
 router.patch('/:matchId', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as AuthRequest).user.userId;
@@ -159,23 +167,24 @@ router.patch('/:matchId', authMiddleware, async (req: Request, res: Response): P
   }
 
   try {
-    const [matches] = await pool.query<MatchRow[]>('SELECT room_id FROM matches WHERE id = ?', [
-      matchId,
-    ]);
+    const [matches] = await pool.query<MatchRow[]>(
+      'SELECT partnership_id FROM matches WHERE id = ?',
+      [matchId],
+    );
 
     if (matches.length === 0) {
       res.status(404).json({ error: 'Match nicht gefunden' });
       return;
     }
 
-    const roomId = matches[0].room_id;
+    const partnershipId = matches[0].partnership_id;
 
     const [membership] = await pool.query<MembershipRow[]>(
-      'SELECT user_id FROM room_members WHERE room_id = ? AND user_id = ?',
-      [roomId, userId],
+      'SELECT user_id FROM partnership_members WHERE partnership_id = ? AND user_id = ?',
+      [partnershipId, userId],
     );
     if (membership.length === 0) {
-      res.status(403).json({ error: 'Kein Mitglied dieses Rooms' });
+      res.status(403).json({ error: 'Kein Mitglied dieser Partnerschaft' });
       return;
     }
 

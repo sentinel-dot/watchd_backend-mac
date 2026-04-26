@@ -15,7 +15,7 @@ describe('PATCH /api/users/me', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.user).toMatchObject({ id: user.userId, name: 'New Name' });
-    expect(res.body.user.isGuest).toBeFalsy();
+    expect(res.body.user.shareCode).toBe(user.shareCode);
 
     const [rows] = await pool.query<(RowDataPacket & { name: string })[]>(
       'SELECT name FROM users WHERE id = ?',
@@ -122,6 +122,72 @@ describe('POST /api/users/me/device-token', () => {
     const res = await agent
       .post('/api/users/me/device-token')
       .send({ deviceToken: 'a'.repeat(64) });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('GET /api/users/me/share-code', () => {
+  it('returns the share-code for the authenticated user', async () => {
+    const user = await createUser(agent, { email: 'sc-get@example.com' });
+
+    const res = await agent
+      .get('/api/users/me/share-code')
+      .set('Authorization', `Bearer ${user.accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.shareCode).toBe(user.shareCode);
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await agent.get('/api/users/me/share-code');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('POST /api/users/me/share-code/regenerate', () => {
+  it('replaces the share-code; old code becomes unusable', async () => {
+    const user = await createUser(agent, { email: 'sc-regen@example.com' });
+
+    const res = await agent
+      .post('/api/users/me/share-code/regenerate')
+      .set('Authorization', `Bearer ${user.accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.shareCode).toBeTypeOf('string');
+    expect(res.body.shareCode).toHaveLength(8);
+    expect(res.body.shareCode).not.toBe(user.shareCode);
+
+    const [rows] = await pool.query<(RowDataPacket & { share_code: string })[]>(
+      'SELECT share_code FROM users WHERE id = ?',
+      [user.userId],
+    );
+    expect(rows[0].share_code).toBe(res.body.shareCode);
+
+    // Looking up by the OLD code now finds nothing
+    const [oldLookup] = await pool.query<RowDataPacket[]>(
+      'SELECT id FROM users WHERE share_code = ?',
+      [user.shareCode],
+    );
+    expect(oldLookup.length).toBe(0);
+  });
+
+  it('produces a different code than before', async () => {
+    const user = await createUser(agent, { email: 'sc-regen2@example.com' });
+
+    const first = await agent
+      .post('/api/users/me/share-code/regenerate')
+      .set('Authorization', `Bearer ${user.accessToken}`);
+    const second = await agent
+      .post('/api/users/me/share-code/regenerate')
+      .set('Authorization', `Bearer ${user.accessToken}`);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(second.body.shareCode).not.toBe(first.body.shareCode);
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await agent.post('/api/users/me/share-code/regenerate');
     expect(res.status).toBe(401);
   });
 });

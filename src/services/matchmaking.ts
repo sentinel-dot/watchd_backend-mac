@@ -25,30 +25,30 @@ interface MemberRow extends RowDataPacket {
 export async function checkAndCreateMatch(
   userId: number,
   movieId: number,
-  roomId: number,
+  partnershipId: number,
 ): Promise<MatchResult> {
   const [members] = await pool.query<MemberRow[]>(
-    'SELECT user_id FROM room_members WHERE room_id = ?',
-    [roomId],
+    'SELECT user_id FROM partnership_members WHERE partnership_id = ?',
+    [partnershipId],
   );
 
   const memberCount = members.length;
   logger.info(
-    { roomId, memberCount, memberIds: members.map((m) => m.user_id) },
-    'Checking match - room members',
+    { partnershipId, memberCount, memberIds: members.map((m) => m.user_id) },
+    'Checking match - partnership members',
   );
 
   const [swipes] = await pool.query<SwipeRow[]>(
     `SELECT user_id FROM swipes
-     WHERE movie_id = ? AND room_id = ? AND direction = 'right'`,
-    [movieId, roomId],
+     WHERE movie_id = ? AND partnership_id = ? AND direction = 'right'`,
+    [movieId, partnershipId],
   );
 
   const rightSwipeCount = swipes.length;
   const swipedUserIds = swipes.map((s) => s.user_id);
   logger.info(
     {
-      roomId,
+      partnershipId,
       movieId,
       memberCount,
       rightSwipeCount,
@@ -63,12 +63,12 @@ export async function checkAndCreateMatch(
   }
 
   const [result] = await pool.query<ResultSetHeader>(
-    'INSERT IGNORE INTO matches (room_id, movie_id) VALUES (?, ?)',
-    [roomId, movieId],
+    'INSERT IGNORE INTO matches (partnership_id, movie_id) VALUES (?, ?)',
+    [partnershipId, movieId],
   );
 
   if (result.affectedRows === 0) {
-    logger.info({ roomId, movieId }, 'Match already exists, skipping duplicate');
+    logger.info({ partnershipId, movieId }, 'Match already exists, skipping duplicate');
     return { isMatch: false };
   }
 
@@ -92,7 +92,7 @@ export async function checkAndCreateMatch(
     logger.warn({ err, movieId }, 'Failed to fetch movie details for match');
   }
 
-  logger.info({ matchId, roomId, movieId, movieTitle }, 'Match created');
+  logger.info({ matchId, partnershipId, movieId, movieTitle }, 'Match created');
 
   return {
     isMatch: true,

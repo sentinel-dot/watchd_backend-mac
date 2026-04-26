@@ -1,4 +1,4 @@
-﻿import type { Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -11,6 +11,7 @@ import type { AuthRequest } from '../middleware/auth';
 import { authMiddleware } from '../middleware/auth';
 import { sendPasswordResetEmail } from '../services/mail';
 import { disconnectUserSockets } from '../socket';
+import { generateUniqueShareCode } from '../services/share-code';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 const router = Router();
@@ -20,7 +21,7 @@ interface UserRow extends RowDataPacket {
   name: string;
   email: string | null;
   password_hash: string | null;
-  is_guest: boolean;
+  share_code: string;
   created_at: Date;
 }
 
@@ -39,8 +40,8 @@ interface RefreshTokenRow extends RowDataPacket {
   revoked: boolean;
 }
 
-function signAccessToken(userId: number, email: string | null, isGuest: boolean): string {
-  return jwt.sign({ userId, email, isGuest }, config.jwtSecret, { expiresIn: '15m' });
+function signAccessToken(userId: number, email: string | null): string {
+  return jwt.sign({ userId, email }, config.jwtSecret, { expiresIn: '15m' });
 }
 
 async function createRefreshToken(userId: number, familyId?: string): Promise<string> {
@@ -66,47 +67,21 @@ export function decodeRefreshToken(
 }
 
 async function issueTokenPair(
-  user: { id: number; name: string; email: string | null; is_guest: boolean },
+  user: { id: number; name: string; email: string | null; share_code: string },
   existingFamily?: string,
 ) {
-  const accessToken = signAccessToken(user.id, user.email, !!user.is_guest);
+  const accessToken = signAccessToken(user.id, user.email);
   const refreshToken = await createRefreshToken(user.id, existingFamily);
   return {
     token: accessToken,
     refreshToken,
-    user: { id: user.id, name: user.name, email: user.email, isGuest: !!user.is_guest },
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      shareCode: user.share_code,
+    },
   };
-}
-
-const GUEST_ADJECTIVES = [
-  'Roter',
-  'Blauer',
-  'Gruener',
-  'Gelber',
-  'Mutiger',
-  'Schneller',
-  'Kluger',
-  'Flinker',
-  'Starker',
-  'Wilder',
-];
-const GUEST_ANIMALS = [
-  'Panda',
-  'Tiger',
-  'Fuchs',
-  'Wolf',
-  'Baer',
-  'Adler',
-  'Falke',
-  'Loewe',
-  'Gepard',
-  'Delfin',
-];
-
-function generateGuestName(): string {
-  const adj = GUEST_ADJECTIVES[Math.floor(Math.random() * GUEST_ADJECTIVES.length)];
-  const animal = GUEST_ANIMALS[Math.floor(Math.random() * GUEST_ANIMALS.length)];
-  return `${adj} ${animal}`;
 }
 
 router.post(
@@ -141,11 +116,17 @@ router.post(
         return;
       }
       const passwordHash = await bcrypt.hash(password, config.bcryptRounds);
+      const shareCode = await generateUniqueShareCode();
       const [result] = await pool.query<ResultSetHeader>(
-        'INSERT INTO users (name, email, password_hash, is_guest) VALUES (?, ?, ?, ?)',
-        [name, email, passwordHash, false],
+        'INSERT INTO users (name, email, password_hash, share_code) VALUES (?, ?, ?, ?)',
+        [name, email, passwordHash, shareCode],
       );
-      const response = await issueTokenPair({ id: result.insertId, name, email, is_guest: false });
+      const response = await issueTokenPair({
+        id: result.insertId,
+        name,
+        email,
+        share_code: shareCode,
+      });
       res.status(201).json(response);
     } catch (err) {
       logger.error({ err }, 'Register error');
@@ -169,7 +150,7 @@ router.post(
     const { email, password } = req.body as { email: string; password: string };
     try {
       const [rows] = await pool.query<UserRow[]>(
-        'SELECT id, name, email, password_hash, is_guest FROM users WHERE email = ?',
+        'SELECT id, name, email, password_hash, share_code FROM users WHERE email = ?',
         [email],
       );
       if (rows.length === 0) {
@@ -194,26 +175,6 @@ router.post(
     }
   },
 );
-
-router.post('/guest', async (_req: Request, res: Response): Promise<void> => {
-  try {
-    const name = generateGuestName();
-    const [result] = await pool.query<ResultSetHeader>(
-      'INSERT INTO users (name, email, password_hash, is_guest) VALUES (?, ?, ?, ?)',
-      [name, null, null, true],
-    );
-    const response = await issueTokenPair({
-      id: result.insertId,
-      name,
-      email: null,
-      is_guest: true,
-    });
-    res.status(201).json(response);
-  } catch (err) {
-    logger.error({ err }, 'Guest creation error');
-    res.status(500).json({ error: 'Interner Serverfehler' });
-  }
-});
 
 router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
   const { refreshToken } = req.body as { refreshToken?: string };
@@ -254,7 +215,7 @@ router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
     }
     await pool.query('UPDATE refresh_tokens SET revoked = TRUE WHERE id = ?', [storedToken.id]);
     const [users] = await pool.query<UserRow[]>(
-      'SELECT id, name, email, is_guest FROM users WHERE id = ?',
+      'SELECT id, name, email, share_code FROM users WHERE id = ?',
       [storedToken.user_id],
     );
     if (users.length === 0) {
@@ -270,62 +231,6 @@ router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
 });
 
 router.post(
-  '/upgrade',
-  authMiddleware,
-  [
-    body('email')
-      .isEmail()
-      .isLength({ max: 254 })
-      .normalizeEmail()
-      .withMessage('Ungueltige E-Mail-Adresse'),
-    body('password')
-      .isLength({ min: 8, max: 128 })
-      .withMessage('Passwort muss zwischen 8 und 128 Zeichen lang sein'),
-  ],
-  async (req: Request, res: Response): Promise<void> => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      res.status(400).json({ error: errors.array()[0].msg });
-      return;
-    }
-    const userId = (req as AuthRequest).user.userId;
-    const { email, password } = req.body as { email: string; password: string };
-    try {
-      const [users] = await pool.query<UserRow[]>('SELECT is_guest FROM users WHERE id = ?', [
-        userId,
-      ]);
-      if (users.length === 0 || !users[0].is_guest) {
-        res.status(400).json({ error: 'Nur Gast-Konten koennen aufgewertet werden' });
-        return;
-      }
-      const [existing] = await pool.query<UserRow[]>('SELECT id FROM users WHERE email = ?', [
-        email,
-      ]);
-      if (existing.length > 0) {
-        res.status(409).json({ error: 'Diese E-Mail ist bereits registriert' });
-        return;
-      }
-      const passwordHash = await bcrypt.hash(password, config.bcryptRounds);
-      await pool.query('UPDATE users SET email = ?, password_hash = ?, is_guest = ? WHERE id = ?', [
-        email,
-        passwordHash,
-        false,
-        userId,
-      ]);
-      const [updated] = await pool.query<UserRow[]>(
-        'SELECT id, name, email, is_guest FROM users WHERE id = ?',
-        [userId],
-      );
-      const response = await issueTokenPair(updated[0]);
-      res.json(response);
-    } catch (err) {
-      logger.error({ err }, 'Upgrade account error');
-      res.status(500).json({ error: 'Interner Serverfehler' });
-    }
-  },
-);
-
-router.post(
   '/forgot-password',
   [body('email').isEmail().normalizeEmail().withMessage('Ungueltige E-Mail-Adresse')],
   async (req: Request, res: Response): Promise<void> => {
@@ -337,10 +242,10 @@ router.post(
     const { email } = req.body as { email: string };
     try {
       const [users] = await pool.query<UserRow[]>(
-        'SELECT id, is_guest FROM users WHERE email = ?',
+        'SELECT id, password_hash FROM users WHERE email = ?',
         [email],
       );
-      if (users.length > 0 && !users[0].is_guest) {
+      if (users.length > 0 && users[0].password_hash) {
         const userId = users[0].id;
         const token = crypto.randomBytes(32).toString('hex');
         const tokenHash = crypto.createHash('sha256').update(token).digest('hex');

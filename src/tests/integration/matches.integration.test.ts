@@ -1,17 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import { agent } from '../setup';
 import { pool } from '../../db/connection';
-import { createUser, createRoom, joinRoom, seedMatch } from '../helpers';
+import { createUser, createPartnership, seedMatch } from '../helpers';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 // MySQL TIMESTAMP has 1-second precision by default, so back-to-back seedMatch
 // calls can collide and make ORDER BY matched_at DESC non-deterministic. These
 // helpers insert with an explicit timestamp so pagination/ordering tests are
 // stable.
-async function seedMatchAt(roomId: number, movieId: number, matchedAt: string): Promise<number> {
+async function seedMatchAt(
+  partnershipId: number,
+  movieId: number,
+  matchedAt: string,
+): Promise<number> {
   const [res] = await pool.query<ResultSetHeader>(
-    'INSERT INTO matches (room_id, movie_id, matched_at) VALUES (?, ?, ?)',
-    [roomId, movieId, matchedAt],
+    'INSERT INTO matches (partnership_id, movie_id, matched_at) VALUES (?, ?, ?)',
+    [partnershipId, movieId, matchedAt],
   );
   return res.insertId;
 }
@@ -24,17 +28,16 @@ async function seedFavoriteAt(userId: number, movieId: number, createdAt: string
   return res.insertId;
 }
 
-describe('GET /api/matches/:roomId', () => {
+describe('GET /api/matches/:partnershipId', () => {
   it('returns paginated matches with watched flag', async () => {
     const alice = await createUser(agent, { email: 'a-matchlist@example.com' });
     const bob = await createUser(agent, { email: 'b-matchlist@example.com' });
-    const room = await createRoom(agent, alice.accessToken);
-    await joinRoom(agent, bob.accessToken, room.code);
-    await seedMatch(room.id, 10001);
-    await seedMatch(room.id, 10002);
+    const partnership = await createPartnership(alice.userId, bob.userId, 'active');
+    await seedMatch(partnership.id, 10001);
+    await seedMatch(partnership.id, 10002);
 
     const res = await agent
-      .get(`/api/matches/${room.id}`)
+      .get(`/api/matches/${partnership.id}`)
       .set('Authorization', `Bearer ${alice.accessToken}`);
     expect(res.status).toBe(200);
     expect(res.body.matches).toHaveLength(2);
@@ -45,14 +48,13 @@ describe('GET /api/matches/:roomId', () => {
   it('paginates across two pages without overlap and reports hasMore correctly', async () => {
     const alice = await createUser(agent, { email: 'a-matchpage@example.com' });
     const bob = await createUser(agent, { email: 'b-matchpage@example.com' });
-    const room = await createRoom(agent, alice.accessToken);
-    await joinRoom(agent, bob.accessToken, room.code);
-    await seedMatchAt(room.id, 11001, '2026-04-01 10:00:00');
-    await seedMatchAt(room.id, 11002, '2026-04-01 10:00:01');
-    await seedMatchAt(room.id, 11003, '2026-04-01 10:00:02');
+    const partnership = await createPartnership(alice.userId, bob.userId, 'active');
+    await seedMatchAt(partnership.id, 11001, '2026-04-01 10:00:00');
+    await seedMatchAt(partnership.id, 11002, '2026-04-01 10:00:01');
+    await seedMatchAt(partnership.id, 11003, '2026-04-01 10:00:02');
 
     const page1 = await agent
-      .get(`/api/matches/${room.id}?limit=2&offset=0`)
+      .get(`/api/matches/${partnership.id}?limit=2&offset=0`)
       .set('Authorization', `Bearer ${alice.accessToken}`);
     expect(page1.status).toBe(200);
     expect(page1.body.matches.map((m: { movie: { id: number } }) => m.movie.id)).toEqual([
@@ -61,7 +63,7 @@ describe('GET /api/matches/:roomId', () => {
     expect(page1.body.pagination).toMatchObject({ total: 3, limit: 2, offset: 0, hasMore: true });
 
     const page2 = await agent
-      .get(`/api/matches/${room.id}?limit=2&offset=2`)
+      .get(`/api/matches/${partnership.id}?limit=2&offset=2`)
       .set('Authorization', `Bearer ${alice.accessToken}`);
     expect(page2.status).toBe(200);
     expect(page2.body.matches.map((m: { movie: { id: number } }) => m.movie.id)).toEqual([11001]);
@@ -76,26 +78,24 @@ describe('GET /api/matches/:roomId', () => {
   it('clamps limit above 50 to 50', async () => {
     const alice = await createUser(agent, { email: 'a-matchclamp@example.com' });
     const bob = await createUser(agent, { email: 'b-matchclamp@example.com' });
-    const room = await createRoom(agent, alice.accessToken);
-    await joinRoom(agent, bob.accessToken, room.code);
-    await seedMatch(room.id, 12001);
+    const partnership = await createPartnership(alice.userId, bob.userId, 'active');
+    await seedMatch(partnership.id, 12001);
 
     const res = await agent
-      .get(`/api/matches/${room.id}?limit=999`)
+      .get(`/api/matches/${partnership.id}?limit=999`)
       .set('Authorization', `Bearer ${alice.accessToken}`);
     expect(res.status).toBe(200);
     expect(res.body.pagination.limit).toBe(50);
   });
 
-  it('returns 403 when the user is not a room member', async () => {
+  it('returns 403 when the user is not a partnership member', async () => {
     const alice = await createUser(agent, { email: 'a-match403@example.com' });
     const bob = await createUser(agent, { email: 'b-match403@example.com' });
     const outsider = await createUser(agent, { email: 'out-match403@example.com' });
-    const room = await createRoom(agent, alice.accessToken);
-    await joinRoom(agent, bob.accessToken, room.code);
+    const partnership = await createPartnership(alice.userId, bob.userId, 'active');
 
     const res = await agent
-      .get(`/api/matches/${room.id}`)
+      .get(`/api/matches/${partnership.id}`)
       .set('Authorization', `Bearer ${outsider.accessToken}`);
     expect(res.status).toBe(403);
   });
@@ -105,9 +105,8 @@ describe('PATCH /api/matches/:matchId', () => {
   it('toggles watched flag', async () => {
     const alice = await createUser(agent, { email: 'a-watch@example.com' });
     const bob = await createUser(agent, { email: 'b-watch@example.com' });
-    const room = await createRoom(agent, alice.accessToken);
-    await joinRoom(agent, bob.accessToken, room.code);
-    const matchId = await seedMatch(room.id, 20001);
+    const partnership = await createPartnership(alice.userId, bob.userId, 'active');
+    const matchId = await seedMatch(partnership.id, 20001);
 
     const setTrue = await agent
       .patch(`/api/matches/${matchId}`)
