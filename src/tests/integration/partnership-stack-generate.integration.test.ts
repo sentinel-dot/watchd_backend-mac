@@ -16,9 +16,9 @@ beforeAll(async () => {
 
 async function createBarePartnership(requesterId: number, addresseeId: number): Promise<number> {
   const [result] = await pool.query<ResultSetHeader>(
-    `INSERT INTO partnerships (requester_id, addressee_id, status, filters, stack_next_page, stack_generating, stack_exhausted, accepted_at)
-     VALUES (?, ?, 'active', NULL, 1, 1, 0, NOW())`,
-    [requesterId, addresseeId],
+    `INSERT INTO partnerships (requester_id, addressee_id, status, filters, stack_next_page, stack_generating, stack_exhausted, accepted_at, user_a_id, user_b_id)
+     VALUES (?, ?, 'active', NULL, 1, 1, 0, NOW(), ?, ?)`,
+    [requesterId, addresseeId, Math.min(requesterId, addresseeId), Math.max(requesterId, addresseeId)],
   );
   const partnershipId = result.insertId;
   await pool.query(

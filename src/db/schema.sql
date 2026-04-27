@@ -40,17 +40,17 @@ CREATE TABLE `users` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- PARTNERSHIPS --------------------------------------------------
--- user_a_id / user_b_id sind generierte Spalten (LEAST/GREATEST der beiden
--- User-IDs) und tragen den UNIQUE-Index für das Paar — das funktioniert
--- portabel auf MySQL 5.7+/8 und MariaDB 10.2+ (im Gegensatz zu MySQL-8-only
--- functional indexes auf LEAST/GREATEST direkt).
+-- user_a_id / user_b_id werden bei INSERT per LEAST/GREATEST gesetzt (in partnerships.ts)
+-- und tragen den UNIQUE-Index für das Paar. Reguläre Spalten statt GENERATED ALWAYS,
+-- da MySQL 8 keine FK-Constraints auf Spalten erlaubt, die in STORED generated columns
+-- derselben Tabelle referenziert werden.
 CREATE TABLE `partnerships` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `status` ENUM('pending', 'active') NOT NULL DEFAULT 'pending',
   `requester_id` INT NOT NULL,
   `addressee_id` INT NOT NULL,
-  `user_a_id` INT GENERATED ALWAYS AS (LEAST(`requester_id`, `addressee_id`)) STORED,
-  `user_b_id` INT GENERATED ALWAYS AS (GREATEST(`requester_id`, `addressee_id`)) STORED,
+  `user_a_id` INT NOT NULL,
+  `user_b_id` INT NOT NULL,
   `filters` JSON NULL,
   `stack_next_page` INT NOT NULL DEFAULT 6,
   `stack_generating` TINYINT(1) NOT NULL DEFAULT 0,

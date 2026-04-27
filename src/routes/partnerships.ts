@@ -167,8 +167,8 @@ router.post('/request', authMiddleware, async (req: Request, res: Response): Pro
     try {
       await conn.beginTransaction();
       const [insertResult] = await conn.query<ResultSetHeader>(
-        'INSERT INTO partnerships (requester_id, addressee_id, status) VALUES (?, ?, ?)',
-        [userId, target.id, 'pending'],
+        'INSERT INTO partnerships (requester_id, addressee_id, status, user_a_id, user_b_id) VALUES (?, ?, ?, ?, ?)',
+        [userId, target.id, 'pending', Math.min(userId, target.id), Math.max(userId, target.id)],
       );
       partnershipId = insertResult.insertId;
       await conn.query('INSERT INTO partnership_members (partnership_id, user_id) VALUES (?, ?)', [

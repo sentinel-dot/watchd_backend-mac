@@ -78,6 +78,32 @@ Vor tieferem Debugging immer zuerst:
 - frueherer Fehler hat Refill verhindert; Logs zeigen den ersten Ausloeser
 - fuer den konkreten User sind alle vorhandenen Stack-Filme bereits geswiped
 
+### Server-Start schlägt fehl: `Cannot add foreign key constraint` (WATCHD_APPLY_SCHEMA)
+
+**Symptom**
+
+Railway-Log zeigt beim Start:
+```
+FATAL: Server start failed
+Error: Cannot add foreign key constraint
+sqlState: HY000
+```
+Lokal funktioniert der Start trotz `WATCHD_APPLY_SCHEMA=1` ohne Fehler.
+
+**Ursache**
+
+MySQL 8 verbietet FK-Constraints auf Spalten, die gleichzeitig als Basis-Spalte einer `STORED GENERATED` Column in derselben Tabelle benutzt werden. MariaDB erlaubt diese Kombination — daher kein lokaler Fehler.
+
+Klassisches Muster: `partnerships` hatte `requester_id` mit `FOREIGN KEY → users.id` und gleichzeitig `user_a_id GENERATED ALWAYS AS (LEAST(requester_id, ...)) STORED` — MySQL 8 verweigert das CREATE TABLE.
+
+**Fix**
+
+Generierte Spalten durch reguläre `INT NOT NULL`-Spalten ersetzen und die Werte beim INSERT per `Math.min`/`Math.max` setzen. UNIQUE KEY bleibt erhalten und erzwingt die Pair-Uniqueness weiterhin auf DB-Ebene.
+
+**Prüfung**
+
+`WATCHD_APPLY_SCHEMA` ist eine Dev-/Test-Funktion — in `apply-schema.ts` wird sie bei `NODE_ENV=production` explizit geblockt. Railway sollte diese Variable im Prod-Environment **nicht** gesetzt haben.
+
 ---
 
 ## SQL-Snippets
