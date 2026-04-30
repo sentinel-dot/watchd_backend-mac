@@ -38,7 +38,8 @@ watchd_backend-mac/src/
 ├── index.ts              # Dünner Wrapper: dotenv, createApp(), initSocket, Signal-Handler,
 │                         # start() mit applyDevSchemaIfEnabled + scheduleTokenCleanup + listen
 ├── app.ts                # createApp({ skipRateLimiter? }) Factory:
-│                         # Middleware, Routes, /health, /.well-known/..., /reset-password,
+│                         # Middleware, Routes, /health, /.well-known/...,
+│                         # /reset-password, /add/:code,
 │                         # 404, Error-Middleware; returns { app, httpServer, parsedOrigins }
 │                         # Rate limits: auth 10/15min per IP, swipes 120/min per IP,
 │                         # /api/partnerships/request 10/min per IP
@@ -177,7 +178,14 @@ watchd/watchd/
                                    # isFavorite(); paginiert; mehr laden bei letzten 5; min 450ms
 
 Views/                         # alle SwiftUI-Screens (Xcode 16 erfasst neue Dateien automatisch)
-├── AuthView.swift             # Login / Register / Guest / Forgot-Password Entry-Screen
+├── AuthView.swift             # Premium Auth-Landing im Velvet-Hour-Stil mit rotierendem
+│                              # Hero-Wort (Watchd/Zu zweit/Swipen/Match finden/Filmabend),
+│                              # vorbereitetem Apple-/Google-Action-Dock (Phase 9/10
+│                              # zeigt bis zur echten Umsetzung "Noch nicht implementiert")
+│                              # und Login/Register als sekundäre Sheets;
+│                              # AuthField mit persistenter Feld-Label-Zeile, iOS-semantic
+│                              # textContentTypes (Login `username` + `password`,
+│                              # Register/Reset `newPassword`), Accessibility-Hints
 ├── MainTabView.swift          # Auth-Root: 3 Tabs (Räume / Favoriten / Profil), je eigene
 │                              # NavigationStack; UITabBarAppearance Theme-getintet
 ├── RoomsView.swift            # Räume-Tab (ex-HomeView): Hallo-Header, Room-Liste,
@@ -197,9 +205,16 @@ Views/                         # alle SwiftUI-Screens (Xcode 16 erfasst neue Dat
 ├── UpgradeAccountView.swift   # Guest → Vollkonto (Email + Password hinzufügen)
 ├── GuestUpgradePromptSheet.swift # Sheet nach N Matches als Gast — "Jetzt sichern" /
 │                                  # "Später"; ruft UpgradeAccountView bei Confirm
-├── PasswordResetViews.swift   # Forgot-Password-Request + Reset via Deep-Link-Token
+├── PasswordResetViews.swift   # Forgot-Password-Request + Reset via Deep-Link-Token;
+│                              # nutzt dieselben verbesserten AuthFields inkl.
+│                              # Accessibility-/Password-Rules-Konfiguration
 ├── LegalView.swift            # Datenschutz / Impressum / AGB
-├── NativeTextField.swift      # UIViewRepresentable Wrapper für bessere Keyboard-Handles
+├── NativeTextField.swift      # UIViewRepresentable Wrapper für bessere Keyboard-Handles;
+│                              # pro Feld konfigurierbare Auto-Capitalization,
+│                              # Auto-Correction, Spell-Checking, Accessibility-Labels
+├── KeyboardWarmupView.swift   # Hidden UIKit helper: primet den Text-Input/First-Responder-
+│                              # Pfad einmalig nach App-Start, um den First-Tap-Lag im
+│                              # ersten Auth-Feld zu reduzieren
 └── SharedComponents.swift     # Wiederverwendbare UI-Bausteine (Buttons, Loader, Empty-States)
 
 watchd_backend-mac/docs/
@@ -398,10 +413,11 @@ Short-lived Access-Tokens + Refresh-Token-Rotation. Wiederverwendung eines revok
 ```
 App Launch → ContentView
 ├── NICHT AUTH → AuthView
-│   ├── Login (email + password)
-│   ├── Register-Sheet
+│   ├── Premium Landing: rotierendes Hero-Wort + Apple/Google-Dock (Phase 9/10 vorbereitet)
+│   ├── Anmelden-Sheet (email + password)
+│   ├── Registrieren-Sheet
 │   ├── Passwort vergessen → Reset-Mail → deep link → ResetPasswordView
-│   └── Guest Login (anonymer dt. Name)
+│   └── kein Gast-Zugang mehr
 └── AUTH → MainTabView (3 Tabs, je eigene NavigationStack)
     ├── Tab "Räume" → RoomsView
     │   ├── Room-Karte → SwipeView (TabBar hidden)
@@ -430,8 +446,9 @@ App Launch → ContentView
             └── Konto löschen → Destructive-Alert
 
 Deep Links:
-  watchd://join/ROOMCODE              → auto-join (oder Code für Post-Login queuen)
   watchd://reset-password?token=TOKEN → ResetPasswordView Sheet
+  watchd://add/CODE                   → AddPartnerSheet mit Code-Prefill; queued bis nach Login
+  https://watchd.up.railway.app/add/CODE → Universal Link auf denselben Add-Partner-Flow
 ```
 
 **Push Notifications (iOS):**
@@ -469,7 +486,7 @@ Xcode-Pflicht: Push Notifications Capability via Signing & Capabilities → erze
 - NICHT: Skill-Regeln umgehen — für neue Tests `/test-integration` oder `/test-unit` nutzen
 - IMMER: Nach Backend-Änderungen `npm run typecheck` ausführen
 - IMMER: Test-Änderungen zweimal hintereinander laufen lassen (Determinismus-Check)
-- IMMER: CLAUDE.md aktualisieren wenn sich Routes, Views, Env-Vars, Architektur oder Bugs ändern
+- IMMER: AGENTS.md aktualisieren wenn sich Routes, Views, Env-Vars, Architektur oder Bugs ändern
 
 ---
 
@@ -479,8 +496,8 @@ Xcode-Pflicht: Push Notifications Capability via Signing & Capabilities → erze
 - **Planung zuerst**: Vor Änderungen >~50 Zeilen kurzen Plan vorlegen und Freigabe abwarten
 - **Kein Scope-Creep**: Nur das Geforderte — keine Bonus-Refactors, keine ungefragten Kommentare, keine Verbesserungen am umliegenden Code
 - **Sub-Agents**: Nur für breite Codebase-Exploration (`Explore`-Agent) oder Architektur-Planung (`Plan`-Agent) — für normale Tasks inline arbeiten
-- **Definition of Done**: lint + format:check + typecheck grün (Backend) + CLAUDE.md aktualisiert + kein neuer Scope eingeschlichen
-- **Dokumentationspflicht**: CLAUDE.md wird nach jeder Änderung automatisch aktualisiert — ohne explizite Aufforderung. Vor jeder Planung Status-Einträge aktiv gegen den Code verifizieren, nie blind der Doku vertrauen.
+- **Definition of Done**: lint + format:check + typecheck grün (Backend) + AGENTS.md aktualisiert + kein neuer Scope eingeschlichen
+- **Dokumentationspflicht**: AGENTS.md wird nach jeder Änderung automatisch aktualisiert — ohne explizite Aufforderung. Vor jeder Planung Status-Einträge aktiv gegen den Code verifizieren, nie blind der Doku vertrauen.
 
 ---
 
@@ -488,7 +505,7 @@ Xcode-Pflicht: Push Notifications Capability via Signing & Capabilities → erze
 
 | Status        | Thema                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **in Arbeit** | Partnerships-Refactor: Rooms → persistente Partnerschaften, Gast-Zugang weg, Share-Codes mit Double-Opt-In, Apple Sign-In. Plan + Phasen: `docs/partnerships-refactor-plan.md` (Parent-Repo). Branch: `refactor/partnerships`. **Phasen 1–7 fertig** (2026-04-26): Backend (Schema/Services/Routes/Socket/Tests, 117 Tests grün) und iOS-Stack (Models/Services/ViewModels/Views) sind komplett umgebaut. **Phase 7 (iOS Views)**: `PartnersView` (Section-List Eingehend/Partner/Ausstehend) ersetzt `RoomsView`; neue `AddPartnerSheet`, `PartnerFiltersView`, Overflow-Views `PendingRequestsView` / `OutgoingRequestsView` / `AllPartnersView`. `SwipeView.init(partnership:)`, `MatchView`/`MatchesListView` auf `partnershipId`, `Match.partnershipId` korrigiert (war noch `roomId`). `AuthView`: Guest-Button raus + Apple-Placeholder-TODO. `ProfileView`: Archiv + Konto-sichern raus, „Dein Code"-Section mit Copy + Regenerate (Confirm-Alert). `MainTabView`-Tab heißt jetzt „Partner". `watchdApp`: `watchd://join/...` Deep-Link entfernt. **Cleanup**: 6 Legacy-Views gelöscht (`RoomsView`, `RoomFiltersView`, `CreateRoomSheet`, `ArchivedRoomsView`, `GuestUpgradePromptSheet`, `UpgradeAccountView`), `RoomModels.swift` weg, alle Room-Methoden aus `APIService` (`createRoom`/`joinRoom`/`getRoom(s)`/`updateRoom*`/`leaveRoom`/`deleteFromArchive`/`getMovieFeed`/`getNextMovie`/`submitSwipe`/`getMatches`) und `SocketService.connect(token:roomId:)` + `roomDissolvedPublisher` + `filtersUpdatedPublisher<RoomFilters>` raus. Build muss noch in Xcode verifiziert werden — User kümmert sich. Phase 8 (Deep-Links `watchd://add/CODE` + Push-Payloads) und Phase 9 (Apple Sign-In) als nächstes. |
+| **in Arbeit** | Partnerships-Refactor: Rooms → persistente Partnerschaften, Gast-Zugang weg, Share-Codes mit Double-Opt-In, Apple Sign-In. Plan + Phasen: `docs/partnerships-refactor-plan.md` (Parent-Repo). Branch: `refactor/partnerships`. **Phasen 1–8 fertig** (Phase 8 am 2026-04-30): Backend (Schema/Services/Routes/Socket/Tests, 117 Tests grün), iOS-Stack (Models/Services/ViewModels/Views) und Deep-Link/Push-Routing sind umgebaut. `watchd://add/CODE` und Universal Link `/add/:code` öffnen `AddPartnerSheet` mit Prefill oder werden bis nach Login gequeued. Push-Taps für `partnership_request` öffnen/markieren den Partner-Tab, `partnership_accepted` und `match` öffnen die betroffene Partnerschaft. iOS-Build zuletzt grün am 2026-04-28 via `xcodebuild -quiet -project watchd/watchd.xcodeproj -scheme watchd -configuration Debug -destination generic/platform=iOS -derivedDataPath .deriveddata-ios CODE_SIGNING_ALLOWED=NO build` (außerhalb Sandbox wegen CoreSimulator-Zugriff). Phase 9 (Apple Sign-In) als nächstes. |
 | **erledigt**  | CI: GitHub Actions mit MySQL-8-Service-Container (`.github/workflows/test.yml`), Typecheck + Tests auf jedem PR; Branch-Protection auf `main` blockiert direkte Pushes (siehe `CONTRIBUTING.md`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | **erledigt**  | Design Overhaul iOS: Einziges Theme **Velvet Hour** (cool dark, Champagne-Accent, Bluu Next + Manrope) + Bottom-Tab-Navigation. Design-Kontext in `watchd/.impeccable.md`. Phasen 0–5 + Vereinfachung abgeschlossen (2026-04-24): Theme-Foundation, MainTabView + ProfileView + RoomsView, alle Screens editorial redesigned, WatchdTheme-Shim gelöscht, ThemeManager entfernt (kein Switcher), Theme statisch injiziert (`.environment(\.theme, .velvetHour)` + `.preferredColorScheme(.dark)`). BluuNext (Bold + BoldItalic) + Manrope (Regular/Medium/SemiBold/Bold) liegen unter `watchd/watchd/Fonts/`, `FontRegistry.registerAll()` registriert sie beim App-Launch. Keine Backend-Änderungen.                                                                                                                                                                                                            |
 | **post-MVP**  | Room-Namen editieren in UI (Route existiert, UI fehlt)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |

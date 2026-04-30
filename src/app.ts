@@ -148,8 +148,8 @@ export function createApp(options?: CreateAppOptions): CreateAppResult {
       applinks: {
         details: [
           {
-            appIDs: [`${config.apns.teamId}.com.watchd.app`],
-            components: [{ '/': '/reset-password*' }],
+            appIDs: [`${config.apns.teamId}.com.milinkovic.watchd`],
+            components: [{ '/': '/reset-password*' }, { '/': '/add/*' }],
           },
         ],
       },
@@ -199,6 +199,57 @@ export function createApp(options?: CreateAppOptions): CreateAppResult {
     }
     <p>Du hast die App noch nicht installiert?<br>Bitte installiere Watchd zuerst und fordere danach einen neuen Reset-Link an — der Link ist nur <strong style="color:#fff">1 Stunde</strong> gültig.</p>
     <p class="hint">Falls du diese E-Mail nicht angefordert hast, kannst du sie ignorieren.</p>
+  </div>
+</body>
+	</html>`);
+  });
+
+  // Fallback page for Partner-Code Universal Links when the app is not installed.
+  // iOS intercepts /add/:code before this is reached if the app is present.
+  app.get('/add/:code', (req: Request, res: Response) => {
+    const code = (req.params['code'] ?? '')
+      .trim()
+      .toUpperCase()
+      .replace(/[^0-9ABCDEFGHJKMNPQRSTVWXYZ]/g, '')
+      .slice(0, 8);
+    const deepLink = code ? `watchd://add/${encodeURIComponent(code)}` : '';
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(`<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Watchd – Partner hinzufügen</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#141414;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{background:#1e1e1e;border-radius:12px;padding:40px 32px;max-width:480px;width:100%;text-align:center}
+    h1{color:#E50914;font-size:28px;font-weight:700;letter-spacing:2px;margin-bottom:32px}
+    h2{font-size:20px;font-weight:600;margin-bottom:16px}
+    p{color:#aaa;font-size:15px;line-height:1.6;margin-bottom:16px}
+    code{display:inline-block;background:#111;color:#fff;font-size:22px;letter-spacing:4px;padding:10px 14px;border-radius:6px;margin:4px 0 12px}
+    .btn{display:inline-block;background:#E50914;color:#fff;font-size:16px;font-weight:600;text-decoration:none;padding:14px 32px;border-radius:6px;margin:8px 0}
+    .hint{font-size:13px;color:#666;margin-top:24px;line-height:1.5}
+    .divider{border:none;border-top:1px solid #333;margin:24px 0}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>WATCHD</h1>
+    <h2>Partner hinzufügen</h2>
+    <p>Öffne diesen Link in der Watchd-App, um die Partner-Anfrage vorzubereiten.</p>
+    ${code ? `<code>${code}</code>` : ''}
+    ${
+      deepLink
+        ? `
+    <hr class="divider">
+    <a href="${deepLink}" class="btn">In App öffnen</a>
+    <hr class="divider">
+    `
+        : ''
+    }
+    <p class="hint">Falls die App nicht installiert ist, installiere Watchd zuerst und öffne den Link danach erneut.</p>
   </div>
 </body>
 </html>`);
