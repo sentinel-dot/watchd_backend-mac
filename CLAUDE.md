@@ -27,7 +27,7 @@ Tinder-style Movie-Matching-App: zwei User swipen in einem gemeinsamen "Room" au
 - **Architektur**: MVVM — alle ViewModels `@MainActor ObservableObject`
 - **Netzwerk**: `URLSession` actor (`APIService`), Socket.io (vendored, v16.1.1)
 - **Storage**: Keychain (`com.watchd.app`)
-- **Theme**: Netflix-style — Background `#141414`, Primary Red `#E50914`
+- **Theme**: Velvet Hour — Base `#14101E`, Champagne-Accent `#D3A26B`, Bluu Next Display + Manrope Body
 
 ---
 
@@ -132,33 +132,56 @@ watchd_backend-mac/src/
                           # + socket.io-client; Shared-Server bleibt unberührt)
 
 watchd/watchd/
-├── watchdApp.swift       # @main; deep link handling; environment objects: AuthViewModel, NetworkMonitor
-├── ContentView.swift     # Root: AuthView (nicht auth) / HomeView (auth); ResetPassword-Sheet
-├── AppDelegate.swift     # APNs-Token → hex → POST /users/me/device-token; foreground notifications
+├── watchdApp.swift       # @main; deep link handling (`watchd://reset-password?token=...`,
+│                         # `watchd://add/CODE`, Universal Links `/reset-password`,
+│                         # `/add/:code`); add-Code wird bis nach Login gequeued
+├── ContentView.swift     # Root: AuthView (nicht auth) / MainTabView (auth); ResetPassword-Sheet
+├── AppDelegate.swift     # APNs-Token → hex → POST /users/me/device-token; foreground
+│                         # notifications; Push-Tap-Routing für match /
+│                         # partnership_request / partnership_accepted
+├── AppNavigation.swift   # App-interne Navigation-Events + queued Deep-Link/Push-Ziele
 ├── Config/
-│   ├── APIConfig.swift   # Base URLs (Debug: localhost:3000, Release: Railway); #if DEBUG
-│   └── WatchdTheme.swift # Design System (Farben, Fonts, Gradients)
+│   ├── APIConfig.swift          # Base URLs (Debug: localhost:3000, Release: Railway); #if DEBUG
+│   ├── Theme.swift              # struct Theme + einzige Instanz Theme.velvetHour; ThemeFonts
+│   ├── Color+Tokens.swift       # VelvetHourPalette enum + ThemeColors.velvetHour
+│   ├── ThemeEnvironment.swift   # @Environment(\.theme) EnvironmentKey + Extension
+│   ├── ThemeManager.swift       # Leer-Stub (kein Switching mehr nötig)
+│   └── FontRegistry.swift       # registerAll() — BluuNext + Manrope (6 Dateien)
+├── Fonts/                 # BluuNext-Bold/-BoldItalic + Manrope-Regular/Medium/SemiBold/Bold
 ├── Models/               # Codable structs (snake_case → camelCase via keyDecodingStrategy)
-│   ├── AuthModels.swift  # Auth requests/responses, User struct
-│   ├── MovieModels.swift # Movie, StreamingOption, SwipeRequest/Response, MatchInfo
-│   ├── RoomModels.swift  # Room, RoomFilters, RoomMember, join/leave/detail responses
-│   └── MatchModels.swift # Match, MatchMovie, Favorite, SocketMatchEvent, FavoritesResponse
+│   ├── AuthModels.swift          # Auth requests/responses, User struct
+│   ├── MovieModels.swift         # Movie, StreamingOption, SwipeResponse/SwipeInfo, MatchInfo
+│   ├── PartnershipModels.swift   # Partnership, PartnerUser, PartnershipFilters,
+│   │                             # PartnershipsListResponse, PartnershipDetailResponse,
+│   │                             # AddPartnerRequest, ShareCodeResponse,
+│   │                             # PartnershipRequest/Accepted/EndedSocketEvent
+│   └── MatchModels.swift         # Match (partnershipId), MatchMovie, Favorite,
+│                                 # SocketMatchEvent, FavoritesResponse
 ├── Services/
 │   ├── APIService.swift      # actor — thread-safe async/await URLSession; Auto-refresh bei 401
 │   │                         # isRefreshing-Flag verhindert parallele Refreshes; Timeout: 30s
-│   ├── KeychainHelper.swift  # Keys: jwt_token, jwt_refresh_token, user_id, user_name,
-│   │                         #       user_email (is_guest in Phase 6 entfernt)
+│   │                         # Partnership-Methoden: fetchPartnerships, fetchPartnership,
+│   │                         # requestPartnership, acceptPartnership, declinePartnership,
+│   │                         # cancelPartnershipRequest, deletePartnership,
+│   │                         # updatePartnershipFilters, fetchShareCode, regenerateShareCode,
+│   │                         # fetchFeedForPartnership, swipeForPartnership, fetchMatchesForPartnership
+│   ├── KeychainHelper.swift  # Keys: jwt_token, jwt_refresh_token, user_id, user_name, user_email
 │   ├── NetworkMonitor.swift  # @MainActor ObservableObject; NWPathMonitor → @Published isConnected
-│   └── SocketService.swift   # @MainActor Singleton; Publishers: matchPublisher,
-│                             # filtersUpdatedPublisher, partnerLeftPublisher,
-│                             # partnerJoinedPublisher, roomDissolvedPublisher
-│                             # Lazy connect — nur beim Betreten der SwipeView
+│   └── SocketService.swift   # @MainActor Singleton; connect(token:partnershipId:)
+│                             # Publishers: matchPublisher, partnerFiltersUpdatedPublisher,
+│                             # partnerLeftPublisher, partnerJoinedPublisher,
+│                             # partnershipRequestPublisher, partnershipAcceptedPublisher,
+│                             # partnershipEndedPublisher
+│                             # Lifecycle: connect() bei Login/Session-Restore (AuthViewModel);
+│                             # disconnect() bei Logout/deleteAccount/unauthorizedError.
+│                             # SwipeView upgraded auf user+partnership Channel (partnershipId)
 └── ViewModels/
     ├── AuthViewModel.swift       # Singleton (AuthViewModel.shared); loadSession() aus Keychain;
     │                             # login, register, updateName, logout, deleteAccount;
     │                             # requestPushPermissionIfNeeded();
-    │                             # setupUnauthorizedListener() reagiert auf 401s
-    │                             # (guestLogin / upgradeAccount in Phase 6 entfernt)
+    │                             # setupUnauthorizedListener() reagiert auf 401s;
+    │                             # Socket-Lifecycle: connect() in loadSession()+persistSession(),
+    │                             # disconnect() in logout()+deleteAccount()+handleUnauthorized()
     ├── PartnersViewModel.swift   # loadPartnerships() liefert {incoming, outgoing, active};
     │                             # acceptRequest / declineRequest / cancelRequest /
     │                             # deletePartnership / updateFilters mit optimistic update;
@@ -170,8 +193,7 @@ watchd/watchd/
     │                             # (20/page), lazy load bei ≤5; handleDrag + commitSwipe —
     │                             # 100pt Threshold, 0.25s fly-out
     │                             # Subscriptions: match, partnerFiltersUpdated, partnerLeft,
-    │                             # partnershipEnded; reconnectSocketIfNeeded() beim
-    │                             # App-Foreground
+    │                             # partnershipEnded; reconnectSocketIfNeeded() beim App-Foreground
     ├── MatchesViewModel.swift    # init(partnershipId:); fetchMatches() paginiert; mehr
     │                             # laden bei letzten 5; min 450ms
     └── FavoritesViewModel.swift  # loadFavorites(), toggleFavorite(), removeFavorite(),
@@ -179,42 +201,29 @@ watchd/watchd/
 
 Views/                         # alle SwiftUI-Screens (Xcode 16 erfasst neue Dateien automatisch)
 ├── AuthView.swift             # Premium Auth-Landing im Velvet-Hour-Stil mit rotierendem
-│                              # Hero-Wort (Watchd/Zu zweit/Swipen/Match finden/Filmabend),
-│                              # vorbereitetem Apple-/Google-Action-Dock (Phase 9/10
-│                              # zeigt bis zur echten Umsetzung "Noch nicht implementiert")
-│                              # und Login/Register als sekundäre Sheets;
-│                              # AuthField mit persistenter Feld-Label-Zeile, iOS-semantic
-│                              # textContentTypes (Login `username` + `password`,
-│                              # Register/Reset `newPassword`), Accessibility-Hints
-├── MainTabView.swift          # Auth-Root: 3 Tabs (Räume / Favoriten / Profil), je eigene
+│                              # Hero-Wort; Apple-/Google-Dock als Phase-9/10-Skeletons;
+│                              # Login/Register als sekundäre Sheets
+├── MainTabView.swift          # Auth-Root: 3 Tabs (Partner / Favoriten / Profil), je eigene
 │                              # NavigationStack; UITabBarAppearance Theme-getintet
-├── RoomsView.swift            # Räume-Tab (ex-HomeView): Hallo-Header, Room-Liste,
-│                              # Create/Join-Buttons — Settings-Menu ausgelagert
-├── ProfileView.swift          # Profil-Tab (List): Konto, Archiv, Rechtliches,
-│                              # Abmelden, Konto löschen (kein Theme-Switcher — Velvet Hour fix)
-├── SwipeView.swift            # Karten-Stack (3 gestaffelt), Drag-Gesture, Match-Modal-Trigger
-├── MatchView.swift            # Hero-Moment: radialer Accent-Bloom + 6-Stufen-Staggered-Reveal
-│                              # + .success-Haptik (kein Konfetti). Streaming-Optionen als Chips
+├── PartnersView.swift         # Partner-Tab: Section-List Eingehend/Partner/Ausstehend,
+│                              # AddPartnerSheet-Trigger, Overflow-Links
+├── AddPartnerSheet.swift      # 8-char Share-Code-Eingabe; optional Deep-Link-vorausgefüllt
+├── PartnerFiltersView.swift   # Filter-Editor → Stack neu generieren
+├── PendingRequestsView.swift  # Overflow: alle eingehenden Anfragen (Accept/Decline)
+├── OutgoingRequestsView.swift # Overflow: alle ausgehenden Anfragen (Cancel)
+├── AllPartnersView.swift      # Overflow: alle aktiven Partner
+├── ProfileView.swift          # Profil-Tab: Konto, Dein Code (Copy + Regenerate),
+│                              # Rechtliches, Abmelden, Konto löschen
+├── SwipeView.swift            # init(partnership:). Karten-Stack, Drag-Gesture, Match-Modal
+├── MatchView.swift            # Radial-Bloom + Staggered-Reveal + .success-Haptik
 ├── MatchesListView.swift      # Paginiert, watched togglen, Detail-Navigation
 ├── FavoritesListView.swift    # Paginiert, toggleFavorite, Detail-Navigation
 ├── MovieDetailView.swift      # Film-Details + Streaming-Anbieter
-├── MovieCardView.swift        # Einzelne Swipe-Karte (Poster, Titel, Rating, Herz-Button)
-├── CreateRoomSheet.swift      # Neuer Room: Name + Filter (Genres, Jahre, Streaming)
-├── RoomFiltersView.swift      # Filter-Editor für bestehenden Room → Stack neu generieren
-├── ArchivedRoomsView.swift    # Liste + Hard-Delete archivierter Rooms
-├── UpgradeAccountView.swift   # Guest → Vollkonto (Email + Password hinzufügen)
-├── GuestUpgradePromptSheet.swift # Sheet nach N Matches als Gast — "Jetzt sichern" /
-│                                  # "Später"; ruft UpgradeAccountView bei Confirm
-├── PasswordResetViews.swift   # Forgot-Password-Request + Reset via Deep-Link-Token;
-│                              # nutzt dieselben verbesserten AuthFields inkl.
-│                              # Accessibility-/Password-Rules-Konfiguration
+├── MovieCardView.swift        # Swipe-Karte (Poster, Titel, Rating, Overlay-Badges)
+├── PasswordResetViews.swift   # Forgot-Password-Request + Reset via Deep-Link-Token
 ├── LegalView.swift            # Datenschutz / Impressum / AGB
-├── NativeTextField.swift      # UIViewRepresentable Wrapper für bessere Keyboard-Handles;
-│                              # pro Feld konfigurierbare Auto-Capitalization,
-│                              # Auto-Correction, Spell-Checking, Accessibility-Labels
-├── KeyboardWarmupView.swift   # Hidden UIKit helper: primet den Text-Input/First-Responder-
-│                              # Pfad einmalig nach App-Start, um den First-Tap-Lag im
-│                              # ersten Auth-Feld zu reduzieren
+├── NativeTextField.swift      # UIViewRepresentable Wrapper für bessere Keyboard-Handles
+├── KeyboardWarmupView.swift   # Hidden UIKit helper: reduziert First-Tap-Lag
 └── SharedComponents.swift     # Wiederverwendbare UI-Bausteine (Buttons, Loader, Empty-States)
 
 watchd_backend-mac/docs/
@@ -419,31 +428,27 @@ App Launch → ContentView
 │   ├── Passwort vergessen → Reset-Mail → deep link → ResetPasswordView
 │   └── kein Gast-Zugang mehr
 └── AUTH → MainTabView (3 Tabs, je eigene NavigationStack)
-    ├── Tab "Räume" → RoomsView
-    │   ├── Room-Karte → SwipeView (TabBar hidden)
+    ├── Tab "Partner" → PartnersView (Section-List)
+    │   ├── Eingehende Anfragen → Accept / Decline / Overflow → PendingRequestsView
+    │   ├── Partner-Karte → SwipeView(partnership:) (TabBar hidden)
     │   │   ├── Karten-Stack (3 Karten, gestaffelt): Drag ±100pt
     │   │   ├── Right-Swipe → Matchmaking → Socket.io match → MatchView Sheet
     │   │   │   └── MatchView: Radial-Bloom + Staggered-Reveal + Streaming-Optionen
-    │   │   │       ├── "Weiter swipen" → zurück zur SwipeView
-    │   │   │       │   └── (Gast, ≥3 Matches, Cooldown abgelaufen)
-    │   │   │       │       → GuestUpgradePromptSheet
-    │   │   │       │         ├── "Jetzt sichern" → UpgradeAccountView
-    │   │   │       │         └── "Später" → zurück zur SwipeView
+    │   │   │       ├── "Weiter schauen" → zurück zur SwipeView
     │   │   │       └── "Alle Matches" → MatchesListView
     │   │   ├── Herz-Button (Karte) → Favorit togglen
     │   │   ├── Toolbar-Herz → MatchesListView → MovieDetailView
-    │   │   └── Socket Events: partner_joined/left, room_dissolved, filters_updated
-    │   ├── Room erstellen → CreateRoomSheet (Name + Filter) → SwipeView
-    │   ├── Room beitreten → JoinRoomSheet (6-char Code) → SwipeView
-    │   └── Filter bearbeiten → RoomFiltersView → Stack neu generieren
-    ├── Tab "Favoriten" → FavoritesListView (global, roomId-entkoppelt) → MovieDetailView
+    │   │   └── Socket Events: partner_joined/left, partnership_ended, filters_updated
+    │   ├── Ausstehende Anfragen → Cancel / Overflow → OutgoingRequestsView
+    │   ├── Bottom-CTA „Partner hinzufügen" → AddPartnerSheet
+    │   ├── ContextMenu/SwipeActions: Filter → PartnerFiltersView, Partner entfernen
+    │   └── Overflow „Alle Partner" → AllPartnersView
+    ├── Tab "Favoriten" → FavoritesListView (global, partnership-entkoppelt) → MovieDetailView
     └── Tab "Profil" → ProfileView
-        ├── Konto: Name, Email, Guest → UpgradeAccountView
-        ├── Archiv → ArchivedRoomsView
+        ├── Konto: Name editieren, Email anzeigen
+        ├── Dein Code: Copy + Regenerate (Confirm-Alert)
         ├── Rechtliches → Datenschutz / Nutzungsbedingungen / Impressum / Datenquellen
-        └── Session:
-            ├── Abmelden → (Gast: 3-Button-Alert)
-            └── Konto löschen → Destructive-Alert
+        └── Session: Abmelden | Konto löschen (Destructive-Alert)
 
 Deep Links:
   watchd://reset-password?token=TOKEN → ResetPasswordView Sheet

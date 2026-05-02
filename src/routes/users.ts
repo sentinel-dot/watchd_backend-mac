@@ -76,7 +76,7 @@ router.post(
       .isString()
       .trim()
       .isLength({ min: 32, max: 255 })
-      .withMessage('Invalid device token'),
+      .withMessage('Ungültiger Geräte-Token'),
   ],
   async (req: Request, res: Response): Promise<void> => {
     const errors = validationResult(req);

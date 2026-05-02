@@ -14,7 +14,7 @@ export interface AuthRequest extends Request {
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers['authorization'];
   if (!header || !header.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Missing or invalid authorization header' });
+    res.status(401).json({ error: 'Authentifizierung fehlt' });
     return;
   }
 
@@ -24,6 +24,6 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
     (req as AuthRequest).user = payload;
     next();
   } catch {
-    res.status(401).json({ error: 'Invalid or expired token' });
+    res.status(401).json({ error: 'Token ungültig oder abgelaufen' });
   }
 }
