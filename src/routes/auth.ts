@@ -95,7 +95,7 @@ router.post(
       .isEmail()
       .isLength({ max: 254 })
       .normalizeEmail()
-      .withMessage('Ungueltige E-Mail-Adresse'),
+      .withMessage('Ungültige E-Mail-Adresse'),
     body('password')
       .isLength({ min: 8, max: 128 })
       .withMessage('Passwort muss zwischen 8 und 128 Zeichen lang sein'),
@@ -138,7 +138,7 @@ router.post(
 router.post(
   '/login',
   [
-    body('email').isEmail().normalizeEmail().withMessage('Ungueltige E-Mail-Adresse'),
+    body('email').isEmail().normalizeEmail().withMessage('Ungültige E-Mail-Adresse'),
     body('password').isLength({ min: 1 }).withMessage('Passwort ist erforderlich'),
   ],
   async (req: Request, res: Response): Promise<void> => {
@@ -154,17 +154,17 @@ router.post(
         [email],
       );
       if (rows.length === 0) {
-        res.status(401).json({ error: 'Ungueltige Anmeldedaten' });
+        res.status(401).json({ error: 'Ungültige Anmeldedaten' });
         return;
       }
       const user = rows[0];
       if (!user.password_hash) {
-        res.status(401).json({ error: 'Ungueltige Anmeldedaten' });
+        res.status(401).json({ error: 'Ungültige Anmeldedaten' });
         return;
       }
       const match = await bcrypt.compare(password, user.password_hash);
       if (!match) {
-        res.status(401).json({ error: 'Ungueltige Anmeldedaten' });
+        res.status(401).json({ error: 'Ungültige Anmeldedaten' });
         return;
       }
       const response = await issueTokenPair(user);
@@ -184,7 +184,7 @@ router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
   }
   const decoded = decodeRefreshToken(refreshToken);
   if (!decoded) {
-    res.status(401).json({ error: 'Ungueltiger Refresh-Token' });
+    res.status(401).json({ error: 'Ungültiger Refresh-Token' });
     return;
   }
   const tokenHash = crypto.createHash('sha256').update(decoded.tok).digest('hex');
@@ -194,7 +194,7 @@ router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
       [tokenHash],
     );
     if (rows.length === 0) {
-      res.status(401).json({ error: 'Ungueltiger Refresh-Token' });
+      res.status(401).json({ error: 'Ungültiger Refresh-Token' });
       return;
     }
     const storedToken = rows[0];
@@ -232,7 +232,7 @@ router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
 
 router.post(
   '/forgot-password',
-  [body('email').isEmail().normalizeEmail().withMessage('Ungueltige E-Mail-Adresse')],
+  [body('email').isEmail().normalizeEmail().withMessage('Ungültige E-Mail-Adresse')],
   async (req: Request, res: Response): Promise<void> => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -290,7 +290,7 @@ router.post(
         [tokenHash],
       );
       if (tokens.length === 0 || tokens[0].used || new Date() > tokens[0].expires_at) {
-        res.status(400).json({ error: 'Ungueltiger oder abgelaufener Token' });
+        res.status(400).json({ error: 'Ungültiger oder abgelaufener Token' });
         return;
       }
       const resetToken = tokens[0];

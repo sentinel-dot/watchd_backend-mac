@@ -102,7 +102,7 @@ watchd_backend-mac/src/
 └── tests/
     ├── global-setup.ts   # CREATE DATABASE watchd_test + schema.sql anwenden
     ├── setup.ts          # createApp({skipRateLimiter:true}) + alle Mocks zentral
-    │                     # (socket, apns, mail, tmdb, justwatch, room-stack)
+    │                     # (socket, apns, mail, tmdb, justwatch, partnership-stack)
     │                     # Module wird einmalig pro Worker evaluiert (isolate:false) —
     │                     # beforeAll startet den Server nur wenn !httpServer.listening;
     │                     # beforeEach: truncateAll() + clearAllMocks(); kein afterAll
@@ -164,7 +164,8 @@ watchd/watchd/
 │   │                         # requestPartnership, acceptPartnership, declinePartnership,
 │   │                         # cancelPartnershipRequest, deletePartnership,
 │   │                         # updatePartnershipFilters, fetchShareCode, regenerateShareCode,
-│   │                         # fetchFeedForPartnership, swipeForPartnership, fetchMatchesForPartnership
+│   │                         # fetchFeedForPartnership, fetchNextMovieForPartnership,
+│   │                         # swipeForPartnership, fetchMatchesForPartnership
 │   ├── KeychainHelper.swift  # Keys: jwt_token, jwt_refresh_token, user_id, user_name, user_email
 │   ├── NetworkMonitor.swift  # @MainActor ObservableObject; NWPathMonitor → @Published isConnected
 │   └── SocketService.swift   # @MainActor Singleton; connect(token:partnershipId:)
