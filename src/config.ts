@@ -51,4 +51,11 @@ export const config = {
       privateKey: process.env['APPLE_PRIVATE_KEY'] ?? '',
     };
   },
+  // Google Sign-In config — lazy getter for the same reason as apple.
+  get google() {
+    return {
+      clientIdIos: process.env['GOOGLE_CLIENT_ID_IOS'] ?? '',
+      clientIdWeb: process.env['GOOGLE_CLIENT_ID_WEB'] ?? '',
+    };
+  },
 };

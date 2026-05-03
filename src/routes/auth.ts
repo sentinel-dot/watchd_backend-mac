@@ -10,6 +10,7 @@ import {
   getClientSecret as appleGetClientSecret,
   revokeAuthorizationToken as appleRevokeAuthorizationToken,
 } from 'apple-signin-auth';
+import { OAuth2Client } from 'google-auth-library';
 import { pool } from '../db/connection';
 import { config } from '../config';
 import { logger } from '../logger';
@@ -39,6 +40,18 @@ interface AppleUserRow extends RowDataPacket {
   share_code: string;
   apple_refresh_token: string | null;
 }
+
+interface GoogleUserRow extends RowDataPacket {
+  id: number;
+  name: string;
+  email: string | null;
+  password_hash: string | null;
+  share_code: string;
+}
+
+// Module-level client — created once, reused per request.
+// Top-level instantiation makes this easy to mock in unit/integration tests.
+const googleOAuth2Client = new OAuth2Client();
 
 interface ResetTokenRow extends RowDataPacket {
   id: number;
@@ -403,6 +416,97 @@ router.post(
       res.status(201).json(response);
     } catch (err) {
       logger.error({ err }, 'Apple sign-in error');
+      res.status(500).json({ error: 'Interner Serverfehler' });
+    }
+  },
+);
+
+router.post(
+  '/google',
+  [body('idToken').isString().notEmpty().withMessage('idToken ist erforderlich')],
+  async (req: Request, res: Response): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ error: errors.array()[0].msg });
+      return;
+    }
+
+    if (!config.google.clientIdIos) {
+      res.status(503).json({ error: 'Google Sign-In ist nicht konfiguriert' });
+      return;
+    }
+
+    const { idToken } = req.body as { idToken: string };
+
+    try {
+      // 1. Verify Google ID token against the iOS client ID (audience claim).
+      //    We also accept the web client ID if configured — useful for future platforms.
+      let googleSub: string;
+      let googleEmail: string | null;
+      let googleName: string | null;
+      try {
+        const audiences = [config.google.clientIdIos];
+        if (config.google.clientIdWeb) audiences.push(config.google.clientIdWeb);
+        const ticket = await googleOAuth2Client.verifyIdToken({ idToken, audience: audiences });
+        const payload = ticket.getPayload();
+        if (!payload?.sub) throw new Error('Empty payload');
+        googleSub = payload.sub;
+        googleEmail = payload.email ?? null;
+        googleName = payload.name ?? payload.given_name ?? null;
+      } catch (verifyErr) {
+        logger.warn({ verifyErr }, 'Google ID token verification failed');
+        res.status(401).json({ error: 'Google-Authentifizierung fehlgeschlagen' });
+        return;
+      }
+
+      // 2a. Find by google_id → existing Google user
+      let [rows] = await pool.query<GoogleUserRow[]>(
+        'SELECT id, name, email, password_hash, share_code FROM users WHERE google_id = ?',
+        [googleSub],
+      );
+      if (rows.length > 0) {
+        const response = await issueTokenPair(rows[0]);
+        res.json(response);
+        return;
+      }
+
+      // 2b. Find by email → account linking (email+password or Apple account ↔ Google ID)
+      if (googleEmail) {
+        [rows] = await pool.query<GoogleUserRow[]>(
+          'SELECT id, name, email, password_hash, share_code FROM users WHERE email = ?',
+          [googleEmail],
+        );
+        if (rows.length > 0) {
+          const user = rows[0];
+          await pool.query('UPDATE users SET google_id = ? WHERE id = ?', [googleSub, user.id]);
+          logger.info({ userId: user.id }, 'Google account linked via email match');
+          const response = await issueTokenPair(user);
+          res.json(response);
+          return;
+        }
+      }
+
+      // 2c. New user — Google only (no password)
+      const userName =
+        typeof googleName === 'string' && googleName.trim().length > 0
+          ? googleName.trim().slice(0, 64)
+          : 'Watchd-User';
+      const shareCode = await generateUniqueShareCode();
+      const [result] = await pool.query<ResultSetHeader>(
+        'INSERT INTO users (name, email, google_id, share_code) VALUES (?, ?, ?, ?)',
+        [userName, googleEmail, googleSub, shareCode],
+      );
+      logger.info({ userId: result.insertId }, 'New user created via Google Sign-In');
+      const response = await issueTokenPair({
+        id: result.insertId,
+        name: userName,
+        email: googleEmail,
+        share_code: shareCode,
+        password_hash: null,
+      });
+      res.status(201).json(response);
+    } catch (err) {
+      logger.error({ err }, 'Google sign-in error');
       res.status(500).json({ error: 'Interner Serverfehler' });
     }
   },

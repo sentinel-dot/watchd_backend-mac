@@ -51,9 +51,18 @@ function withAppleConfig(fn: () => Promise<void>): Promise<void> {
 
 describe('POST /api/auth/apple', () => {
   it('returns 503 when Apple Sign-In is not configured', async () => {
-    // env vars absent by default in test env
-    const res = await agent.post('/api/auth/apple').send(VALID_APPLE_BODY);
-    expect(res.status).toBe(503);
+    const saved = Object.fromEntries(
+      APPLE_ENV_KEYS.map((k) => [k, process.env[k]]),
+    ) as Record<string, string | undefined>;
+    for (const key of APPLE_ENV_KEYS) delete process.env[key];
+    try {
+      const res = await agent.post('/api/auth/apple').send(VALID_APPLE_BODY);
+      expect(res.status).toBe(503);
+    } finally {
+      for (const key of APPLE_ENV_KEYS) {
+        if (saved[key] !== undefined) process.env[key] = saved[key];
+      }
+    }
   });
 
   it('returns 400 for missing identityToken', async () => {

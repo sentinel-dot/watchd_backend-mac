@@ -24,6 +24,7 @@ type MockRegistry = {
   tmdb?: MockModule;
   justwatch?: MockModule;
   appleSignin?: MockModule;
+  googleSignin?: MockModule;
 };
 const { getRegistry } = vi.hoisted(() => ({
   getRegistry: (): MockRegistry => {
@@ -109,6 +110,25 @@ vi.mock('apple-signin-auth', () => {
     getClientSecret: vi.fn().mockReturnValue('mock_client_secret'),
     revokeAuthorizationToken: vi.fn().mockResolvedValue(undefined),
   });
+});
+
+vi.mock('google-auth-library', () => {
+  const r = getRegistry();
+  if (!r.googleSignin) {
+    const verifyIdToken = vi.fn().mockResolvedValue({
+      getPayload: () => ({
+        sub: 'google_default_sub',
+        email: undefined,
+        name: undefined,
+      }),
+    });
+    r.googleSignin = {
+      // The mock constructor always returns the same instance so tests can
+      // access the verifyIdToken spy via `new OAuth2Client()`.
+      OAuth2Client: vi.fn(() => ({ verifyIdToken })),
+    };
+  }
+  return { OAuth2Client: r.googleSignin!.OAuth2Client };
 });
 
 // Eager imports AFTER mock registration
