@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import type { vi } from 'vitest';
 import { agent } from '../setup';
 import { pool } from '../../db/connection';
 import { createUser } from '../helpers';
