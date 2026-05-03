@@ -23,7 +23,7 @@ interface PartnershipRow extends RowDataPacket {
   status: 'pending' | 'active';
   requester_id: number;
   addressee_id: number;
-  filters: string | null;
+  filters: string | Record<string, unknown> | null;
   last_activity_at: Date;
   created_at: Date;
   accepted_at: Date | null;
@@ -40,11 +40,12 @@ interface CountRow extends RowDataPacket {
 }
 
 interface FiltersRow extends RowDataPacket {
-  filters: string | null;
+  filters: string | Record<string, unknown> | null;
 }
 
-function parseFilters(raw: string | null): PartnershipFilters | null {
+function parseFilters(raw: string | Record<string, unknown> | null): PartnershipFilters | null {
   if (!raw) return null;
+  if (typeof raw === 'object') return raw as PartnershipFilters;
   try {
     return JSON.parse(raw) as PartnershipFilters;
   } catch {
