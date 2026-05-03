@@ -105,10 +105,10 @@ und Prod. Kein equivalent zu `APNS_PRODUCTION`.
 
 ## Troubleshooting
 
-| Fehler | Ursache | Fix |
-|--------|---------|-----|
-| `jwt audience invalid. expected: com.milinkovic.watchd.signin` | `APPLE_SERVICES_ID` auf Services ID gesetzt | Wert auf Bundle ID `com.milinkovic.watchd` ändern |
-| `jwt audience invalid. expected: com.milinkovic.watchd` | `APPLE_SERVICES_ID` leer oder falsch | Wert prüfen |
-| `invalid_client` beim Auth-Code-Exchange | Falscher Key, Team ID oder Bundle ID | Alle vier Vars gegen Portal-Werte abgleichen |
-| Name erscheint als `Watchd-User` | Apple sendet Name nur beim Erst-Login | App unter Apple-ID-Einstellungen entfernen, neu einloggen |
-| 503 `Apple Sign-In not configured` | Mind. eine der vier Vars fehlt | Alle vier Vars in `.env` / Railway setzen |
+| Fehler                                                         | Ursache                                     | Fix                                                       |
+| -------------------------------------------------------------- | ------------------------------------------- | --------------------------------------------------------- |
+| `jwt audience invalid. expected: com.milinkovic.watchd.signin` | `APPLE_SERVICES_ID` auf Services ID gesetzt | Wert auf Bundle ID `com.milinkovic.watchd` ändern         |
+| `jwt audience invalid. expected: com.milinkovic.watchd`        | `APPLE_SERVICES_ID` leer oder falsch        | Wert prüfen                                               |
+| `invalid_client` beim Auth-Code-Exchange                       | Falscher Key, Team ID oder Bundle ID        | Alle vier Vars gegen Portal-Werte abgleichen              |
+| Name erscheint als `Watchd-User`                               | Apple sendet Name nur beim Erst-Login       | App unter Apple-ID-Einstellungen entfernen, neu einloggen |
+| 503 `Apple Sign-In not configured`                             | Mind. eine der vier Vars fehlt              | Alle vier Vars in `.env` / Railway setzen                 |

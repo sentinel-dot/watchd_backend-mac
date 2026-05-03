@@ -23,7 +23,15 @@ async function createBarePartnership(
   const [result] = await pool.query<ResultSetHeader>(
     `INSERT INTO partnerships (requester_id, addressee_id, status, filters, stack_next_page, stack_generating, stack_exhausted, accepted_at, user_a_id, user_b_id)
      VALUES (?, ?, 'active', ?, ?, ?, 0, NOW(), ?, ?)`,
-    [requesterId, addresseeId, filtersJson, opts.stackNextPage ?? 6, opts.stackGenerating ? 1 : 0, Math.min(requesterId, addresseeId), Math.max(requesterId, addresseeId)],
+    [
+      requesterId,
+      addresseeId,
+      filtersJson,
+      opts.stackNextPage ?? 6,
+      opts.stackGenerating ? 1 : 0,
+      Math.min(requesterId, addresseeId),
+      Math.max(requesterId, addresseeId),
+    ],
   );
   const partnershipId = result.insertId;
   await pool.query(

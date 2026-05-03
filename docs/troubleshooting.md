@@ -89,11 +89,13 @@ Vor tieferem Debugging immer zuerst:
 **Symptom**
 
 Railway-Log zeigt beim Start:
+
 ```
 FATAL: Server start failed
 Error: Cannot add foreign key constraint
 sqlState: HY000
 ```
+
 Lokal funktioniert der Start trotz `WATCHD_APPLY_SCHEMA=1` ohne Fehler.
 
 **Ursache**
@@ -125,11 +127,11 @@ Generierte Spalten durch reguläre `INT NOT NULL`-Spalten ersetzen und die Werte
 
 **Haeufigste Ursachen**
 
-| Fehler | Ursache |
-| --- | --- |
-| `jwt audience invalid` | `APPLE_SERVICES_ID` ist eine Web-Services-ID statt der iOS Bundle ID |
-| `nonce validation failed` | iOS schickt SHA256(rawNonce) an Apple, aber rawNonce ans Backend — pruefen ob `AppleAuthHelper.sha256` korrekt |
-| `503` | Mind. eine der vier Apple-Env-Vars fehlt in Railway |
+| Fehler                                     | Ursache                                                                                                                               |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `jwt audience invalid`                     | `APPLE_SERVICES_ID` ist eine Web-Services-ID statt der iOS Bundle ID                                                                  |
+| `nonce validation failed`                  | iOS schickt SHA256(rawNonce) an Apple, aber rawNonce ans Backend — pruefen ob `AppleAuthHelper.sha256` korrekt                        |
+| `503`                                      | Mind. eine der vier Apple-Env-Vars fehlt in Railway                                                                                   |
 | User-Email ist `@privaterelay.appleid.com` | Normal — Apple Relay-Email. Kein Fehler, aber `Passwort vergessen`-Flow funktioniert nicht fuer diese Accounts (kein SMTP-Zustellweg) |
 
 **Relay-Email-Besonderheit**

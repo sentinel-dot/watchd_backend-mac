@@ -104,6 +104,7 @@ Google Sign-In benötigt ein URL Scheme für den OAuth-Callback (Redirect nach B
 3. URL Schemes: `com.googleusercontent.apps.600845465744-4cjhu5pv0fnslqfbmtjf8r4tcm54buki`
 
 Das ist der Client ID umgekehrt nach Domain-Teilen:
+
 - Original: `600845465744-4cjhu5pv0fnslqfbmtjf8r4tcm54buki.apps.googleusercontent.com`
 - Reversed: `com.googleusercontent.apps.600845465744-4cjhu5pv0fnslqfbmtjf8r4tcm54buki`
 
@@ -182,26 +183,26 @@ E-Mail-Fallback: Falls Google keine E-Mail liefert → `email = null`, `isPasswo
 
 ## Unterschiede zu Apple Sign-In
 
-| Merkmal | Apple | Google |
-|---------|-------|--------|
-| Private Key nötig? | Ja (`.p8`) | Nein |
-| Env Vars | 4 (`SERVICES_ID`, `TEAM_ID`, `KEY_ID`, `PRIVATE_KEY`) | 1 (`CLIENT_ID_IOS`) |
-| Auth Code Exchange | Ja (für apple_refresh_token) | Nein |
-| Revocation bei Account-Löschen | Ja (fire-and-forget) | Nein |
-| Name nur beim Erst-Login | Ja | Nein (kommt immer) |
-| Sandbox vs. Production | Keine Trennung | Testing vs. Production Status |
-| Nonce erforderlich | Ja | Nein |
+| Merkmal                        | Apple                                                 | Google                        |
+| ------------------------------ | ----------------------------------------------------- | ----------------------------- |
+| Private Key nötig?             | Ja (`.p8`)                                            | Nein                          |
+| Env Vars                       | 4 (`SERVICES_ID`, `TEAM_ID`, `KEY_ID`, `PRIVATE_KEY`) | 1 (`CLIENT_ID_IOS`)           |
+| Auth Code Exchange             | Ja (für apple_refresh_token)                          | Nein                          |
+| Revocation bei Account-Löschen | Ja (fire-and-forget)                                  | Nein                          |
+| Name nur beim Erst-Login       | Ja                                                    | Nein (kommt immer)            |
+| Sandbox vs. Production         | Keine Trennung                                        | Testing vs. Production Status |
+| Nonce erforderlich             | Ja                                                    | Nein                          |
 
 ---
 
 ## Troubleshooting
 
-| Fehler | Ursache | Fix |
-|--------|---------|-----|
-| „OAuth-Zugriff ist auf Testnutzer beschränkt" | App ist im Testing-Status, Account nicht als Test-User eingetragen | Test-User in OAuth consent screen hinzufügen **oder** App auf Production publishen |
-| `idToken is not valid` / 401 | Falsche `GOOGLE_CLIENT_ID_IOS` | Client ID in `.env` und Railway gegen Google Cloud Console abgleichen |
-| Google-Sheet öffnet sich nicht / crash | SPM Package fehlt oder URL Scheme nicht gesetzt | Schritte 5a + 5b prüfen |
-| `No such module 'GoogleSignIn'` in Xcode | SPM Package noch nicht hinzugefügt | Schritt 5a durchführen |
-| OAuth-Callback kommt nicht an (App friert ein) | URL Scheme falsch oder fehlt | Reversed Client ID in URL Types prüfen (Schritt 5b) |
-| 503 `Google Sign-In ist nicht konfiguriert` | `GOOGLE_CLIENT_ID_IOS` fehlt in `.env` / Railway | Variable setzen, Server neu starten |
-| `GIDSignIn.sharedInstance.configuration` crash | SDK wird vor `init()` aufgerufen | `GIDConfiguration` muss in `watchdApp.init()` gesetzt werden — bereits korrekt implementiert |
+| Fehler                                         | Ursache                                                            | Fix                                                                                          |
+| ---------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| „OAuth-Zugriff ist auf Testnutzer beschränkt"  | App ist im Testing-Status, Account nicht als Test-User eingetragen | Test-User in OAuth consent screen hinzufügen **oder** App auf Production publishen           |
+| `idToken is not valid` / 401                   | Falsche `GOOGLE_CLIENT_ID_IOS`                                     | Client ID in `.env` und Railway gegen Google Cloud Console abgleichen                        |
+| Google-Sheet öffnet sich nicht / crash         | SPM Package fehlt oder URL Scheme nicht gesetzt                    | Schritte 5a + 5b prüfen                                                                      |
+| `No such module 'GoogleSignIn'` in Xcode       | SPM Package noch nicht hinzugefügt                                 | Schritt 5a durchführen                                                                       |
+| OAuth-Callback kommt nicht an (App friert ein) | URL Scheme falsch oder fehlt                                       | Reversed Client ID in URL Types prüfen (Schritt 5b)                                          |
+| 503 `Google Sign-In ist nicht konfiguriert`    | `GOOGLE_CLIENT_ID_IOS` fehlt in `.env` / Railway                   | Variable setzen, Server neu starten                                                          |
+| `GIDSignIn.sharedInstance.configuration` crash | SDK wird vor `init()` aufgerufen                                   | `GIDConfiguration` muss in `watchdApp.init()` gesetzt werden — bereits korrekt implementiert |

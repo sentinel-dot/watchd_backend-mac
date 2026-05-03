@@ -30,9 +30,10 @@ const APPLE_ENV_KEYS = [
 ] as const;
 
 function withAppleConfig(fn: () => Promise<void>): Promise<void> {
-  const original = Object.fromEntries(
-    APPLE_ENV_KEYS.map((k) => [k, process.env[k]]),
-  ) as Record<string, string | undefined>;
+  const original = Object.fromEntries(APPLE_ENV_KEYS.map((k) => [k, process.env[k]])) as Record<
+    string,
+    string | undefined
+  >;
   // base64 of a dummy PEM (not a real key — mock intercepts before any real crypto)
   process.env['APPLE_SERVICES_ID'] = 'com.example.watchd.signin';
   process.env['APPLE_TEAM_ID'] = 'TEAM123456';
@@ -51,9 +52,10 @@ function withAppleConfig(fn: () => Promise<void>): Promise<void> {
 
 describe('POST /api/auth/apple', () => {
   it('returns 503 when Apple Sign-In is not configured', async () => {
-    const saved = Object.fromEntries(
-      APPLE_ENV_KEYS.map((k) => [k, process.env[k]]),
-    ) as Record<string, string | undefined>;
+    const saved = Object.fromEntries(APPLE_ENV_KEYS.map((k) => [k, process.env[k]])) as Record<
+      string,
+      string | undefined
+    >;
     for (const key of APPLE_ENV_KEYS) delete process.env[key];
     try {
       const res = await agent.post('/api/auth/apple').send(VALID_APPLE_BODY);
@@ -118,7 +120,9 @@ describe('POST /api/auth/apple', () => {
       vi.mocked(appleGetAuthorizationToken).mockResolvedValueOnce({
         refresh_token: 'apple_rt_002_first',
       } as never);
-      const first = await agent.post('/api/auth/apple').send({ ...VALID_APPLE_BODY, name: 'Alice' });
+      const first = await agent
+        .post('/api/auth/apple')
+        .send({ ...VALID_APPLE_BODY, name: 'Alice' });
       expect(first.status).toBe(201);
       const userId = first.body.user.id;
 
@@ -157,10 +161,9 @@ describe('POST /api/auth/apple', () => {
       expect(res.body.user.id).toBe(emailUser.userId);
       expect(res.body.user.isPasswordResettable).toBe(true);
 
-      const [rows] = await pool.query<RowDataPacket[]>(
-        'SELECT apple_id FROM users WHERE id = ?',
-        [emailUser.userId],
-      );
+      const [rows] = await pool.query<RowDataPacket[]>('SELECT apple_id FROM users WHERE id = ?', [
+        emailUser.userId,
+      ]);
       expect(rows[0].apple_id).toBe('apple_link_003');
     });
   });
@@ -174,9 +177,7 @@ describe('POST /api/auth/apple', () => {
         refresh_token: 'apple_rt_004',
       } as never);
 
-      const res = await agent
-        .post('/api/auth/apple')
-        .send({ ...VALID_APPLE_BODY, name: null });
+      const res = await agent.post('/api/auth/apple').send({ ...VALID_APPLE_BODY, name: null });
       expect(res.status).toBe(201);
       expect(res.body.user.name).toBe('Watchd-User');
     });
@@ -187,9 +188,7 @@ describe('POST /api/auth/apple', () => {
       vi.mocked(appleVerifyIdToken).mockResolvedValueOnce({
         sub: 'apple_nocode_005',
       } as never);
-      vi.mocked(appleGetAuthorizationToken).mockRejectedValueOnce(
-        new Error('invalid_grant'),
-      );
+      vi.mocked(appleGetAuthorizationToken).mockRejectedValueOnce(new Error('invalid_grant'));
 
       const res = await agent.post('/api/auth/apple').send(VALID_APPLE_BODY);
       expect(res.status).toBe(201);

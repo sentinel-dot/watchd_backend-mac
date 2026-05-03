@@ -53,7 +53,14 @@ export async function createPartnership(
   const acceptedAt = status === 'active' ? new Date() : null;
   const [result] = await pool.query<ResultSetHeader>(
     'INSERT INTO partnerships (requester_id, addressee_id, status, accepted_at, user_a_id, user_b_id) VALUES (?, ?, ?, ?, ?, ?)',
-    [requesterId, addresseeId, status, acceptedAt, Math.min(requesterId, addresseeId), Math.max(requesterId, addresseeId)],
+    [
+      requesterId,
+      addresseeId,
+      status,
+      acceptedAt,
+      Math.min(requesterId, addresseeId),
+      Math.max(requesterId, addresseeId),
+    ],
   );
   const partnershipId = result.insertId;
 

@@ -288,7 +288,10 @@ router.post(
   [
     body('identityToken').isString().notEmpty().withMessage('identityToken ist erforderlich'),
     body('nonce').isString().notEmpty().withMessage('nonce ist erforderlich'),
-    body('authorizationCode').isString().notEmpty().withMessage('authorizationCode ist erforderlich'),
+    body('authorizationCode')
+      .isString()
+      .notEmpty()
+      .withMessage('authorizationCode ist erforderlich'),
     body('name').optional({ nullable: true }).isString().isLength({ max: 64 }),
   ],
   async (req: Request, res: Response): Promise<void> => {
@@ -344,7 +347,10 @@ router.post(
         });
         appleRefreshToken = tokenResponse.refresh_token ?? null;
       } catch (tokenErr) {
-        logger.warn({ tokenErr }, 'Apple auth code exchange failed — sign-in proceeds without refresh token');
+        logger.warn(
+          { tokenErr },
+          'Apple auth code exchange failed — sign-in proceeds without refresh token',
+        );
       }
 
       // 3a. Find by apple_id → existing Apple user
@@ -399,7 +405,9 @@ router.post(
 
       // 3c. New user — Apple only (no password)
       const userName =
-        typeof name === 'string' && name.trim().length > 0 ? name.trim().slice(0, 64) : 'Watchd-User';
+        typeof name === 'string' && name.trim().length > 0
+          ? name.trim().slice(0, 64)
+          : 'Watchd-User';
       const shareCode = await generateUniqueShareCode();
       const [result] = await pool.query<ResultSetHeader>(
         'INSERT INTO users (name, email, apple_id, apple_refresh_token, share_code) VALUES (?, ?, ?, ?, ?)',

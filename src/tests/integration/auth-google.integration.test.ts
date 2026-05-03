@@ -18,9 +18,10 @@ const VALID_GOOGLE_BODY = { idToken: 'mock.google.id.token' };
 const GOOGLE_ENV_KEYS = ['GOOGLE_CLIENT_ID_IOS', 'GOOGLE_CLIENT_ID_WEB'] as const;
 
 function withGoogleConfig(fn: () => Promise<void>): Promise<void> {
-  const original = Object.fromEntries(
-    GOOGLE_ENV_KEYS.map((k) => [k, process.env[k]]),
-  ) as Record<string, string | undefined>;
+  const original = Object.fromEntries(GOOGLE_ENV_KEYS.map((k) => [k, process.env[k]])) as Record<
+    string,
+    string | undefined
+  >;
   process.env['GOOGLE_CLIENT_ID_IOS'] = 'com.example.watchd.ios';
   return fn().finally(() => {
     for (const key of GOOGLE_ENV_KEYS) {
@@ -83,10 +84,9 @@ describe('POST /api/auth/google', () => {
       expect(res.body.user.shareCode).toHaveLength(8);
       expect(res.body.user.isPasswordResettable).toBe(false);
 
-      const [rows] = await pool.query<RowDataPacket[]>(
-        'SELECT google_id FROM users WHERE id = ?',
-        [res.body.user.id],
-      );
+      const [rows] = await pool.query<RowDataPacket[]>('SELECT google_id FROM users WHERE id = ?', [
+        res.body.user.id,
+      ]);
       expect(rows[0].google_id).toBe('google_new_001');
     });
   });
@@ -130,10 +130,9 @@ describe('POST /api/auth/google', () => {
       expect(res.body.user.id).toBe(emailUser.userId);
       expect(res.body.user.isPasswordResettable).toBe(true);
 
-      const [rows] = await pool.query<RowDataPacket[]>(
-        'SELECT google_id FROM users WHERE id = ?',
-        [emailUser.userId],
-      );
+      const [rows] = await pool.query<RowDataPacket[]>('SELECT google_id FROM users WHERE id = ?', [
+        emailUser.userId,
+      ]);
       expect(rows[0].google_id).toBe('google_link_003');
     });
   });
