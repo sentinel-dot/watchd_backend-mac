@@ -114,6 +114,10 @@ watchd_backend-mac/src/
     │                     # share-code.unit (Alphabet, Länge, Profanity,
     │                     # Kollisions-Retry, Throw nach 5 Kollisionen)
     └── integration/      # auth (Register-share_code, Cascade auf Partnerships),
+                          # auth-apple (503 ohne Config, 400 missing field, 401 verify-fail,
+                          # 201 Neu-User, 200 existing user, email linking, Name-Fallback,
+                          # Auth-Code-Fail toleriert, Revocation bei delete-account,
+                          # no-op für Email-Only-User),
                           # swipes-matchmaking, partnerships (alle 8 Endpoints +
                           # 4xx-Pfade), movies (Pagination, Swipe-Filter,
                           # Lazy-Refill-Trigger, Member-403), matches (watched-
@@ -228,7 +232,8 @@ Views/                         # alle SwiftUI-Screens (Xcode 16 erfasst neue Dat
 └── SharedComponents.swift     # Wiederverwendbare UI-Bausteine (Buttons, Loader, Empty-States)
 
 watchd_backend-mac/docs/
-└── troubleshooting.md    # Runtime-Incident-Playbook (Socket, Push, room_stack, etc.)
+├── troubleshooting.md       # Runtime-Incident-Playbook (Socket, Push, room_stack, etc.)
+└── apple-signin-setup.md    # Apple Developer Portal → Key → Env Vars → Troubleshooting
 ```
 
 ---
@@ -309,6 +314,12 @@ APNS_TEAM_ID=             # 10-char Team ID
 APNS_PRIVATE_KEY=         # Base64-encoded .p8 Inhalt (einzeilig, keine Newlines)
 APNS_PRODUCTION=false     # false = sandbox (Xcode-Gerät), true = TestFlight/App Store
 
+APPLE_SERVICES_ID=        # e.g. com.milinkovic.watchd.signin (Services ID, NICHT Bundle ID)
+APPLE_TEAM_ID=            # 10-char Team ID (gleich wie APNS_TEAM_ID)
+APPLE_KEY_ID=             # 10-char Key ID des Sign-in-with-Apple Private Key (.p8)
+APPLE_PRIVATE_KEY=        # Base64-encoded .p8 Inhalt (einzeilig, keine Newlines)
+                          # Encoding: base64 -i AuthKey_XXXXXXXXXX.p8 | tr -d '\n'
+
 WATCHD_APPLY_SCHEMA=      # "1" oder "true" → auto-apply schema.sql beim Dev-Start
 BCRYPT_ROUNDS=12          # bcrypt cost factor (Default 12); niedriger für Tests
 ```
@@ -371,6 +382,7 @@ Für Runtime-/Codepfad-Incidents siehe `docs/troubleshooting.md`.
 | -------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `POST`   | `/api/auth/register`                                 | Vollkonto anlegen (name, email, password) — generiert Share-Code                                                     |
 | `POST`   | `/api/auth/login`                                    | Email + Password Login                                                                                               |
+| `POST`   | `/api/auth/apple`                                    | Apple Sign-In: JWT verify, 3-step find-or-create (apple_id → email → create), auth-code exchange für refresh_token  |
 | `POST`   | `/api/auth/refresh`                                  | Token-Rotation (theft detection via family_id)                                                                       |
 | `POST`   | `/api/auth/forgot-password`                          | Password-Reset-Mail senden                                                                                           |
 | `POST`   | `/api/auth/reset-password`                           | Password mit One-Time-Token zurücksetzen                                                                             |

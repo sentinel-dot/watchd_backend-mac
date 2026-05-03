@@ -23,6 +23,7 @@ type MockRegistry = {
   mail?: MockModule;
   tmdb?: MockModule;
   justwatch?: MockModule;
+  appleSignin?: MockModule;
 };
 const { getRegistry } = vi.hoisted(() => ({
   getRegistry: (): MockRegistry => {
@@ -97,6 +98,16 @@ vi.mock('../services/justwatch', () => {
   const r = getRegistry();
   return (r.justwatch ??= {
     getStreamingOffers: vi.fn(async () => []),
+  });
+});
+
+vi.mock('apple-signin-auth', () => {
+  const r = getRegistry();
+  return (r.appleSignin ??= {
+    verifyIdToken: vi.fn().mockResolvedValue({ sub: 'apple_default_sub', email: undefined }),
+    getAuthorizationToken: vi.fn().mockResolvedValue({ refresh_token: 'apple_rt_default' }),
+    getClientSecret: vi.fn().mockReturnValue('mock_client_secret'),
+    revokeAuthorizationToken: vi.fn().mockResolvedValue(undefined),
   });
 });
 

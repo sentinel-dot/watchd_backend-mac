@@ -86,6 +86,7 @@ export function createApp(options?: CreateAppOptions): CreateAppResult {
     app.use('/api/auth/login', authLimiter);
     app.use('/api/auth/register', authLimiter);
     app.use('/api/auth/forgot-password', authLimiter);
+    app.use('/api/auth/apple', authLimiter);
     app.use('/api/swipes', swipeLimiter);
     app.use('/api/partnerships/request', partnershipRequestLimiter);
   }

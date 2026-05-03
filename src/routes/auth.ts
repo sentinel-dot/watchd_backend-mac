@@ -4,6 +4,12 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { body, validationResult } from 'express-validator';
+import {
+  verifyIdToken as appleVerifyIdToken,
+  getAuthorizationToken as appleGetAuthorizationToken,
+  getClientSecret as appleGetClientSecret,
+  revokeAuthorizationToken as appleRevokeAuthorizationToken,
+} from 'apple-signin-auth';
 import { pool } from '../db/connection';
 import { config } from '../config';
 import { logger } from '../logger';
@@ -23,6 +29,15 @@ interface UserRow extends RowDataPacket {
   password_hash: string | null;
   share_code: string;
   created_at: Date;
+}
+
+interface AppleUserRow extends RowDataPacket {
+  id: number;
+  name: string;
+  email: string | null;
+  password_hash: string | null;
+  share_code: string;
+  apple_refresh_token: string | null;
 }
 
 interface ResetTokenRow extends RowDataPacket {
@@ -67,7 +82,13 @@ export function decodeRefreshToken(
 }
 
 async function issueTokenPair(
-  user: { id: number; name: string; email: string | null; share_code: string },
+  user: {
+    id: number;
+    name: string;
+    email: string | null;
+    share_code: string;
+    password_hash?: string | null;
+  },
   existingFamily?: string,
 ) {
   const accessToken = signAccessToken(user.id, user.email);
@@ -80,8 +101,26 @@ async function issueTokenPair(
       name: user.name,
       email: user.email,
       shareCode: user.share_code,
+      isPasswordResettable: !!user.password_hash,
     },
   };
+}
+
+// Revokes an Apple refresh token for GDPR/Apple account-deletion compliance.
+// Called fire-and-forget after user deletion — failure is non-critical.
+async function revokeAppleToken(refreshToken: string): Promise<void> {
+  const privateKeyPem = Buffer.from(config.apple.privateKey, 'base64').toString('utf-8');
+  const clientSecret = appleGetClientSecret({
+    clientID: config.apple.servicesId,
+    teamID: config.apple.teamId,
+    privateKey: privateKeyPem,
+    keyIdentifier: config.apple.keyId,
+  });
+  await appleRevokeAuthorizationToken(refreshToken, {
+    clientID: config.apple.servicesId,
+    clientSecret,
+    tokenTypeHint: 'refresh_token',
+  });
 }
 
 router.post(
@@ -126,6 +165,7 @@ router.post(
         name,
         email,
         share_code: shareCode,
+        password_hash: passwordHash,
       });
       res.status(201).json(response);
     } catch (err) {
@@ -215,7 +255,7 @@ router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
     }
     await pool.query('UPDATE refresh_tokens SET revoked = TRUE WHERE id = ?', [storedToken.id]);
     const [users] = await pool.query<UserRow[]>(
-      'SELECT id, name, email, share_code FROM users WHERE id = ?',
+      'SELECT id, name, email, password_hash, share_code FROM users WHERE id = ?',
       [storedToken.user_id],
     );
     if (users.length === 0) {
@@ -229,6 +269,144 @@ router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
+
+router.post(
+  '/apple',
+  [
+    body('identityToken').isString().notEmpty().withMessage('identityToken ist erforderlich'),
+    body('nonce').isString().notEmpty().withMessage('nonce ist erforderlich'),
+    body('authorizationCode').isString().notEmpty().withMessage('authorizationCode ist erforderlich'),
+    body('name').optional({ nullable: true }).isString().isLength({ max: 64 }),
+  ],
+  async (req: Request, res: Response): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ error: errors.array()[0].msg });
+      return;
+    }
+
+    if (!config.apple.servicesId || !config.apple.privateKey) {
+      res.status(503).json({ error: 'Apple Sign-In ist nicht konfiguriert' });
+      return;
+    }
+
+    const { identityToken, nonce, authorizationCode, name } = req.body as {
+      identityToken: string;
+      nonce: string;
+      authorizationCode: string;
+      name?: string | null;
+    };
+
+    try {
+      // 1. Verify Apple identity token (throws on invalid/expired/nonce-mismatch)
+      let applePayload: { sub: string; email?: string };
+      try {
+        applePayload = await appleVerifyIdToken(identityToken, {
+          audience: config.apple.servicesId,
+          nonce: crypto.createHash('sha256').update(nonce).digest('hex'),
+        });
+      } catch (verifyErr) {
+        logger.warn({ verifyErr }, 'Apple identity token verification failed');
+        res.status(401).json({ error: 'Apple-Authentifizierung fehlgeschlagen' });
+        return;
+      }
+
+      const appleUserId = applePayload.sub;
+      const appleEmail = applePayload.email ?? null;
+
+      // 2. Exchange authorization code → Apple refresh token (for future revocation on delete)
+      let appleRefreshToken: string | null = null;
+      const privateKeyPem = Buffer.from(config.apple.privateKey, 'base64').toString('utf-8');
+      try {
+        const clientSecret = appleGetClientSecret({
+          clientID: config.apple.servicesId,
+          teamID: config.apple.teamId,
+          privateKey: privateKeyPem,
+          keyIdentifier: config.apple.keyId,
+        });
+        const tokenResponse = await appleGetAuthorizationToken(authorizationCode, {
+          clientID: config.apple.servicesId,
+          redirectUri: '',
+          clientSecret,
+        });
+        appleRefreshToken = tokenResponse.refresh_token ?? null;
+      } catch (tokenErr) {
+        logger.warn({ tokenErr }, 'Apple auth code exchange failed — sign-in proceeds without refresh token');
+      }
+
+      // 3a. Find by apple_id → existing Apple user
+      let [rows] = await pool.query<AppleUserRow[]>(
+        'SELECT id, name, email, password_hash, share_code, apple_refresh_token FROM users WHERE apple_id = ?',
+        [appleUserId],
+      );
+      if (rows.length > 0) {
+        const user = rows[0];
+        if (appleRefreshToken) {
+          await pool.query('UPDATE users SET apple_refresh_token = ? WHERE id = ?', [
+            appleRefreshToken,
+            user.id,
+          ]);
+        }
+        const response = await issueTokenPair({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          share_code: user.share_code,
+          password_hash: user.password_hash,
+        });
+        res.json(response);
+        return;
+      }
+
+      // 3b. Find by email → account linking (email+password account ↔ Apple ID)
+      if (appleEmail) {
+        [rows] = await pool.query<AppleUserRow[]>(
+          'SELECT id, name, email, password_hash, share_code, apple_refresh_token FROM users WHERE email = ?',
+          [appleEmail],
+        );
+        if (rows.length > 0) {
+          const user = rows[0];
+          await pool.query('UPDATE users SET apple_id = ?, apple_refresh_token = ? WHERE id = ?', [
+            appleUserId,
+            appleRefreshToken,
+            user.id,
+          ]);
+          logger.info({ userId: user.id }, 'Apple account linked via email match');
+          const response = await issueTokenPair({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            share_code: user.share_code,
+            password_hash: user.password_hash,
+          });
+          res.json(response);
+          return;
+        }
+      }
+
+      // 3c. New user — Apple only (no password)
+      const userName =
+        typeof name === 'string' && name.trim().length > 0 ? name.trim().slice(0, 64) : 'Watchd-User';
+      const shareCode = await generateUniqueShareCode();
+      const [result] = await pool.query<ResultSetHeader>(
+        'INSERT INTO users (name, email, apple_id, apple_refresh_token, share_code) VALUES (?, ?, ?, ?, ?)',
+        [userName, appleEmail, appleUserId, appleRefreshToken, shareCode],
+      );
+      logger.info({ userId: result.insertId }, 'New user created via Apple Sign-In');
+      const response = await issueTokenPair({
+        id: result.insertId,
+        name: userName,
+        email: appleEmail,
+        share_code: shareCode,
+        password_hash: null,
+      });
+      res.status(201).json(response);
+    } catch (err) {
+      logger.error({ err }, 'Apple sign-in error');
+      res.status(500).json({ error: 'Interner Serverfehler' });
+    }
+  },
+);
 
 router.post(
   '/forgot-password',
@@ -344,14 +522,31 @@ router.delete(
       const conn = await pool.getConnection();
       try {
         await conn.beginTransaction();
+
+        // Fetch Apple refresh token before cascade-delete (needed for revocation)
+        const [appleRows] = await conn.query<AppleUserRow[]>(
+          'SELECT apple_refresh_token FROM users WHERE id = ?',
+          [userId],
+        );
+        const appleRefreshToken = appleRows[0]?.apple_refresh_token ?? null;
+
         await conn.query('UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = ?', [userId]);
         await conn.query('UPDATE password_reset_tokens SET used = TRUE WHERE user_id = ?', [
           userId,
         ]);
         await conn.query('DELETE FROM users WHERE id = ?', [userId]);
         await conn.commit();
+
         disconnectUserSockets(userId);
         logger.info({ userId }, 'User account deleted (DSGVO/Apple compliance)');
+
+        // Revoke Apple token fire-and-forget after successful DB commit
+        if (appleRefreshToken && config.apple.servicesId && config.apple.privateKey) {
+          revokeAppleToken(appleRefreshToken).catch((revokeErr) => {
+            logger.warn({ revokeErr, userId }, 'Apple token revocation failed — non-critical');
+          });
+        }
+
         res.json({ message: 'Konto wurde vollstaendig geloescht' });
       } catch (txErr) {
         await conn.rollback();

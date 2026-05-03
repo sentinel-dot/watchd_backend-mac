@@ -27,6 +27,7 @@ CREATE TABLE `users` (
   `email` VARCHAR(254) NULL,
   `password_hash` VARCHAR(255) NULL,
   `apple_id` VARCHAR(255) NULL,
+  `apple_refresh_token` VARCHAR(512) NULL,
   `google_id` VARCHAR(255) NULL,
   `share_code` CHAR(8) NOT NULL,
   `device_token` VARCHAR(255) NULL,

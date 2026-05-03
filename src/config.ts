@@ -41,4 +41,14 @@ export const config = {
     // false = sandbox (debug builds on device), true = production (App Store / TestFlight)
     production: process.env['APNS_PRODUCTION'] === 'true',
   },
+  // Apple Sign-In config is read lazily via getter so that tests can override
+  // process.env values after module import without restarting the app.
+  get apple() {
+    return {
+      servicesId: process.env['APPLE_SERVICES_ID'] ?? '',
+      teamId: process.env['APPLE_TEAM_ID'] ?? '',
+      keyId: process.env['APPLE_KEY_ID'] ?? '',
+      privateKey: process.env['APPLE_PRIVATE_KEY'] ?? '',
+    };
+  },
 };
