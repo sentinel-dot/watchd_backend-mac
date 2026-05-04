@@ -27,7 +27,14 @@ function getProvider(): apn.Provider | null {
       },
       production: config.apns.production,
     });
-    logger.info('APNs provider initialized');
+    logger.info(
+      {
+        production: config.apns.production,
+        endpoint: config.apns.production ? 'api.push.apple.com' : 'api.sandbox.push.apple.com',
+        rawEnv: process.env['APNS_PRODUCTION'],
+      },
+      'APNs provider initialized',
+    );
     return provider;
   } catch (err) {
     logger.error({ err }, 'Failed to initialize APNs provider');
