@@ -140,6 +140,50 @@ Apple liefert die echte Email nur beim allerersten Sign-In. Folge-Logins haben g
 
 ---
 
+### APNs schlägt mit `BadEnvironmentKeyInToken` fehl (alle Pushes)
+
+**Symptom**
+
+Backend-Log zeigt bei jedem Push-Versuch (Match, Partnership-Request, Partnership-Accepted):
+
+```
+"status": 403,
+"response": { "reason": "BadEnvironmentKeyInToken" }
+sent: 0
+failed: 1
+```
+
+Pushes funktionieren weder gegen Production noch gegen Sandbox-Endpoint.
+
+**Diagnose-Schritte**
+
+1. **Diagnostik-Log am Provider-Init prüfen** — `apns.ts` loggt seit dem Push-Outage am 2026-05-04 beim ersten `getProvider()`-Aufruf zusätzlich `production`, `endpoint` und `rawEnv` (= roher `process.env.APNS_PRODUCTION`-String). Im Railway-Log nach `APNs provider initialized` suchen.
+2. **APNs-Key im Apple Portal verifizieren** — `Keys` → den Eintrag mit der `APNS_KEY_ID` aus Railway öffnen → Spalte `Services` muss `APNs` zeigen, **nicht** `Sign In with Apple`. Spalte `APNs Environment` muss `Sandbox & Production` zeigen, **nicht** `Sandbox`.
+3. **Device-Token im Backend vergleichen** — wenn nach jedem Re-Install dieselben Hex-Strings im Log auftauchen, haben die TestFlight-Builds faktisch noch `aps-environment = development`. Token-Wechsel = Build-Environment-Wechsel.
+4. **iOS-Build-Output verifizieren** — im neuesten Run der `iOS Release` GitHub-Action den `Verify IPA Entitlements`-Step öffnen; muss `aps-environment = production` und `get-task-allow = false` zeigen.
+
+**Root Causes (real beobachtet 2026-05-04)**
+
+| Symptom | Ursache | Fix |
+| --- | --- | --- |
+| Push fehlt mit beiden `APNS_PRODUCTION`-Werten | `APNS_KEY_ID` zeigt auf Sign-in-with-Apple-Key statt APNs-Key | Im Apple Portal richtigen APNs-Key identifizieren (Spalte `Services = APNs`), Key-ID + base64(.p8) in Railway korrigieren |
+| Push fehlt nur mit `APNS_PRODUCTION=true` | APNs-Key wurde mit `Sandbox only`-Scope angelegt | Key revoken, neuen Key mit `Sandbox & Production`-Scope erstellen, `.p8` herunterladen, Railway-Vars aktualisieren |
+| Device-Tokens identisch über Re-Installs hinweg | iOS gibt Sandbox-Tokens, weil `aps-environment = development` im IPA verbleibt | `watchd/watchd/watchd.entitlements` auf `production` setzen + Provisioning-Profile im GitHub-Secret regenerieren (siehe `watchd/docs/apns-end-to-end-setup.md` §6 + §8) |
+| `aps-environment = production` im Source, IPA hat aber `development` | Provisioning-Profile im GitHub-Secret stammt aus der Zeit vor der Entitlement-Änderung | Profile in Apple Portal `Edit → Save` (regeneriert), neu base64-encoden, Secret `PROVISIONING_PROFILE` aktualisieren |
+| Alle obigen passen, aber `get-task-allow = true` im IPA | Lokaler Mac-Archive ohne `Apple Distribution`-Certificate; Xcode fällt auf Development-Signing zurück | Entweder Distribution-Cert via `Xcode → Settings → Accounts → Manage Certificates → +` installieren, oder Build über GitHub-Action laufen lassen |
+
+**Hinweis: lautloser Fehler**
+
+Apple liefert `BadEnvironmentKeyInToken` für alle vier Mismatch-Varianten:
+- Sandbox-Token + Production-Endpoint
+- Production-Token + Sandbox-Endpoint
+- Sandbox-only-Key + Production-Endpoint
+- Sign-in-with-Apple-Key statt APNs-Key
+
+iOS-Client sieht nichts davon — keine Fehlermeldung, kein Banner, keine Notification. Backend muss den Fehler aus den Logs ziehen.
+
+---
+
 ### Partnership-Request-Push kommt nicht an
 
 **Symptom**

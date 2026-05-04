@@ -376,7 +376,7 @@ Wenn nur Env-Vars oder externe Abhängigkeiten (TMDB-Key rotiert, APNs-Key neu) 
 | Deploy failed beim Build-Step                                        | TypeScript-Fehler — lokal `npm run typecheck` laufen lassen, fixen, erneut pushen                                                                  |
 | Deploy grün, aber `/health` meldet `db: error`                       | `DB_*` Env-Vars auf Railway falsch oder DB-Service nicht erreichbar                                                                                |
 | Deploy grün, aber `/health` meldet `tmdb: error`                     | `TMDB_API_KEY` oder `TMDB_READ_ACCESS_TOKEN` fehlt/falsch                                                                                          |
-| Match-Push kommt nicht an (App zeigt Match, aber keine Notification) | `APNS_PRODUCTION` passt nicht zum Key-Typ. Sandbox-Key braucht `false`, Production-Key `true`. **Keine Fehlermeldung auf beiden Seiten** — lautlos |
+| Match-Push kommt nicht an (App zeigt Match, aber keine Notification) | Mehrere mögliche Ursachen — Backend-Log auf `BadEnvironmentKeyInToken` prüfen. Vollständiges Diagnose-Schema in `docs/troubleshooting.md` (`APNs schlägt mit BadEnvironmentKeyInToken fehl`). Kurz: `APNS_KEY_ID` muss APNs-Key sein (nicht Sign-in-with-Apple), Key muss `Sandbox & Production`-Scope haben, `aps-environment` im IPA muss zu `APNS_PRODUCTION` passen. **Lautloser Fehler** auf Client-Seite. |
 | Password-Reset-Mail kommt nicht an                                   | `SMTP_HOST` leer → Mail wird nur auf Console geloggt. Railway-Logs prüfen, dann SMTP-Vars setzen                                                   |
 
 Für Runtime-/Codepfad-Incidents siehe `docs/troubleshooting.md`.
