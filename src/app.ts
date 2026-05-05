@@ -15,6 +15,7 @@ import partnershipsRouter from './routes/partnerships';
 import moviesRouter from './routes/movies';
 import swipesRouter from './routes/swipes';
 import matchesRouter from './routes/matches';
+import waitlistRouter from './routes/waitlist';
 
 export interface CreateAppOptions {
   skipRateLimiter?: boolean;
@@ -90,6 +91,15 @@ export function createApp(options?: CreateAppOptions): CreateAppResult {
     app.use('/api/auth/google', authLimiter);
     app.use('/api/swipes', swipeLimiter);
     app.use('/api/partnerships/request', partnershipRequestLimiter);
+
+    const waitlistLimiter = rateLimit({
+      windowMs: 60 * 60 * 1000,
+      max: 5,
+      message: { error: 'Zu viele Versuche, bitte warte eine Stunde.' },
+      standardHeaders: true,
+      legacyHeaders: false,
+    });
+    app.use('/api/waitlist', waitlistLimiter);
   }
 
   app.use('/api/auth', authRouter);
@@ -98,6 +108,7 @@ export function createApp(options?: CreateAppOptions): CreateAppResult {
   app.use('/api/movies', moviesRouter);
   app.use('/api/swipes', swipesRouter);
   app.use('/api/matches', matchesRouter);
+  app.use('/api/waitlist', waitlistRouter);
 
   app.get('/health', async (_req, res) => {
     const healthData: {
